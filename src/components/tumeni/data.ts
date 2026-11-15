@@ -15,16 +15,19 @@ export const LANES: { id: Lane; label: string }[] = [
 
 export const avatar = (n: number) => `https://i.pravatar.cc/150?img=${n}`;
 
-export type User = { id: string; name: string; handle: string; avatar: string; verified?: boolean };
+export type User = { id: string; name: string; handle: string; avatar: string; verified?: boolean | undefined };
 
-export const USERS: Record<string, User> = {
+const USER_MAP = {
   yung: { id: "yung", name: "YungVibeZ", handle: "@yungvibez", avatar: artist, verified: true },
   haha: { id: "haha", name: "Haha Hub", handle: "@hahahub", avatar: "😆" },
   nala: { id: "nala", name: "Nala Gold", handle: "@nalagold", avatar: avatar(47), verified: true },
   kito: { id: "kito", name: "Kito Beats", handle: "@kitobeats", avatar: avatar(12) },
   zuri: { id: "zuri", name: "Zuri", handle: "@zuri.k", avatar: avatar(45) },
   dre: { id: "dre", name: "Dre M.", handle: "@dre.moves", avatar: avatar(59) },
-};
+} satisfies Record<string, User>;
+export type UserId = keyof typeof USER_MAP;
+export const USERS: Record<UserId, User> = USER_MAP;
+export const getUser = (id: string): User | undefined => (USER_MAP as Record<string, User>)[id];
 
 export type Comment = { id: string; user: User; text: string };
 export type Post = {
@@ -34,19 +37,19 @@ export type Post = {
   kind: Kind;
   time: string;
   caption: string;
-  tag?: string;
-  media?: string;
-  mediaIsVideo?: boolean;
-  views?: number;
-  duration?: string;
-  track?: string;
+  tag?: string | undefined;
+  media?: string | undefined;
+  mediaIsVideo?: boolean | undefined;
+  views?: number | undefined;
+  duration?: string | undefined;
+  track?: string | undefined;
   likes: number;
-  liked?: boolean;
+  liked?: boolean | undefined;
   shares: number;
   comments: Comment[];
 };
 
-const c = (u: string, t: string, i: number): Comment => ({ id: `${u}${i}`, user: USERS[u], text: t });
+const c = (u: UserId, t: string, i: number): Comment => ({ id: `${u}${i}`, user: USERS[u], text: t });
 
 export const SEED_POSTS: Post[] = [
   { id: "p1", user: USERS.yung, lane: "circle", kind: "video", time: "2h ago", caption: "New drop otw 🔥", tag: "#StayTuned", media: artist, views: 48200, likes: 2400, shares: 120, comments: [c("zuri", "Been waiting for this!!", 1), c("dre", "Sheesh 🔥", 2)] },
@@ -59,8 +62,8 @@ export const SEED_POSTS: Post[] = [
   { id: "p8", user: USERS.haha, lane: "mix", kind: "text", time: "1d ago", caption: "Group chat: 47 unread. Me: 'lol' 🙂", likes: 2200, shares: 300, comments: [] },
 ];
 
-export type Msg = { id: string; from: string; text: string; time: string; post?: Post };
-export type Chat = { id: string; name: string; avatar: string; group?: boolean; online?: boolean; messages: Msg[] };
+export type Msg = { id: string; from: string; text: string; time: string; post?: Post | undefined };
+export type Chat = { id: string; name: string; avatar: string; group?: boolean | undefined; online?: boolean | undefined; messages: Msg[] };
 
 export const SEED_CHATS: Chat[] = [
   { id: "crew", name: "The Crew", avatar: "👑", group: true, messages: [

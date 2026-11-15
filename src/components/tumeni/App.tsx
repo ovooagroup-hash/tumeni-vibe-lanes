@@ -7,14 +7,14 @@ import {
 } from "lucide-react";
 import { LogoMark } from "./Logo";
 import {
-  LANES, SEED_POSTS, SEED_CHATS, USERS, PROFILES, GRID, fmt, type Lane, type Kind, type Post, type Chat, type User,
+  LANES, SEED_POSTS, SEED_CHATS, USERS, PROFILES, GRID, fmt, getUser, type Lane, type Kind, type Post, type Chat, type User,
 } from "./data";
 import street from "@/assets/street.jpg";
 
 type Tab = "home" | "explore" | "messages" | "profile";
 const LANE_ICON = { circle: Users, music: Music, laughs: Laugh, mix: Sparkles };
 
-function Avatar({ src, size = 44, ring = false }: { src: string; size?: number; ring?: boolean }) {
+function Avatar({ src, size = 44, ring = false }: { src: string; size?: number; ring?: boolean | undefined }) {
   const isEmoji = !src.startsWith("http") && !src.startsWith("/") && !src.startsWith("data") && !src.startsWith("blob");
   return (
     <div className={`shrink-0 overflow-hidden rounded-full bg-secondary ${ring ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : ""}`} style={{ width: size, height: size }}>
@@ -158,7 +158,7 @@ function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () 
   );
 }
 
-function CreatePost({ onClose, onPublish }: { onClose: () => void; onPublish: (p: { lane: Lane; kind: Kind; caption: string; media?: string; isVideo?: boolean }) => void }) {
+function CreatePost({ onClose, onPublish }: { onClose: () => void; onPublish: (p: { lane: Lane; kind: Kind; caption: string; media?: string | undefined; isVideo?: boolean | undefined }) => void }) {
   const [lane, setLane] = useState<Lane>("circle");
   const [kind, setKind] = useState<Kind>("video");
   const [caption, setCaption] = useState("");
@@ -173,7 +173,7 @@ function CreatePost({ onClose, onPublish }: { onClose: () => void; onPublish: (p
     { id: "audio", label: "Audio", I: AudioLines }, { id: "text", label: "Text/Thought", I: MessageSquareText },
   ];
   const publish = () => {
-    if (kind === "text" && !caption.trim()) return toast.error("Write a thought first");
+    if (kind === "text" && !caption.trim()) { toast.error("Write a thought first"); return; }
     onPublish({ lane, kind, caption: caption.trim() || (kind === "audio" ? "Fresh audio drop 🎧" : "New drop 🔥"), media, isVideo });
   };
 
@@ -236,7 +236,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
   const [switcher, setSwitcher] = useState(false);
   const [notif, setNotif] = useState(true);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [tab, openChat]);
-  const profile = PROFILES[profileIdx];
+  const profile = PROFILES[profileIdx] ?? PROFILES[0]!;
   const me: User = { id: "me", name: profile.name, handle: profile.handle, avatar: profile.avatar };
 
   const feed = lane === "mix" ? posts : posts.filter((p) => p.lane === lane || (lane === "circle" && p.user.id === "me"));
@@ -276,7 +276,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
       {tab === "messages" && (openChat ? (
         <ChatView chat={chats.find((c) => c.id === openChat)!} onBack={() => setOpenChat(null)} onSend={(text) => {
           setChats((cs) => cs.map((c) => (c.id === openChat ? { ...c, messages: [...c.messages, { id: crypto.randomUUID(), from: "me", text, time: "now" }] } : c)));
-          setTimeout(() => setChats((cs) => cs.map((c) => (c.id === openChat ? { ...c, messages: [...c.messages, { id: crypto.randomUUID(), from: c.group ? "zuri" : c.id, text: ["😂😂", "facts", "say less 🔥", "pull up!", "no way 👀"][Math.floor(Math.random() * 5)], time: "now" }] } : c))), 1200);
+          setTimeout(() => setChats((cs) => cs.map((c) => (c.id === openChat ? { ...c, messages: [...c.messages, { id: crypto.randomUUID(), from: c.group ? "zuri" : c.id, text: ["😂😂", "facts", "say less 🔥", "pull up!", "no way 👀"][Math.floor(Math.random() * 5)] ?? "🔥", time: "now" }] } : c))), 1200);
         }} />
       ) : (
         <Messages chats={chats} onOpen={setOpenChat} />
@@ -428,7 +428,7 @@ function ChatView({ chat, onBack, onSend }: { chat: Chat; onBack: () => void; on
       </header>
       <div className="flex-1 space-y-3 p-4 pb-28">
         {chat.messages.map((m) => {
-          const mine = m.from === "me"; const u = USERS[m.from];
+          const mine = m.from === "me"; const u = getUser(m.from);
           return (
             <div key={m.id} className={`flex items-end gap-2 ${mine ? "justify-end" : ""}`}>
               {!mine && u && <Avatar src={u.avatar} size={28} />}
