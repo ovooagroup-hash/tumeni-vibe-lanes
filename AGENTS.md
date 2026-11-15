@@ -28,3 +28,6 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- tumeni app UI lives in src/components/tumeni and is rendered from src/routes/index.tsx with in-memory state; test login is stored in localStorage (no backend yet) so the full flow is testable instantly.
+- Installable via manifest-only (public/manifest.webmanifest); no service worker, to keep previews fresh.

@@ -1,23 +1,30 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Auth } from "@/components/tumeni/Auth";
+import { TumeniApp } from "@/components/tumeni/App";
 
-// The home route ships no og:image, so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "tumeni. — Find Your Circle" },
+      { name: "description", content: "Share videos, music snippets, memes and thoughts with your circle on tumeni." },
+      { property: "og:title", content: "tumeni. — Find Your Circle" },
+      { property: "og:description", content: "Share videos, music snippets, memes and thoughts with your circle on tumeni." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+  const [account, setAccount] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setAccount(localStorage.getItem("tumeni-account")); setReady(true); }, []);
+  if (!ready) return <div className="min-h-dvh bg-background" />;
+  return account ? (
+    <TumeniApp account={account} onLogout={() => { localStorage.removeItem("tumeni-account"); setAccount(null); }} />
+  ) : (
+    <Auth onLogin={(id) => { localStorage.setItem("tumeni-account", id); setAccount(id); }} />
   );
 }
