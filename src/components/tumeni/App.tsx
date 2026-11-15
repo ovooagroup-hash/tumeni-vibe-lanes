@@ -70,7 +70,7 @@ function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: ()
       {post.kind === "video" && (
         <div className="relative overflow-hidden rounded-2xl">
           {post.mediaIsVideo ? (
-            <video src={post.media} className="aspect-[4/5] w-full object-cover" loop muted playsInline ref={(v) => { if (v) { playing ? v.play() : v.pause(); } }} />
+            <video src={post.media} className="aspect-[4/5] w-full object-cover" loop muted playsInline ref={(v) => { if (!v) return undefined; if (playing) { void v.play().catch(() => {}); } else { v.pause(); } return undefined; }} />
           ) : (
             <img src={post.media} alt="" className={`aspect-[4/5] w-full object-cover transition duration-[8s] ${playing ? "scale-110" : ""}`} />
           )}
@@ -419,7 +419,7 @@ function Messages({ chats, onOpen }: { chats: Chat[]; onOpen: (id: string) => vo
 function ChatView({ chat, onBack, onSend }: { chat: Chat; onBack: () => void; onSend: (t: string) => void }) {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [chat.messages.length]);
+  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth" }); }, [chat.messages.length]);
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-background/85 p-4 backdrop-blur-xl">
