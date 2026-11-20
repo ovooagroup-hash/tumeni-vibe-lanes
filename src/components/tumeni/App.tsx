@@ -57,8 +57,8 @@ function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: ()
   }, [playing, post.kind]);
 
   return (
-    <article className="animate-rise rounded-3xl border border-border bg-card p-3">
-      <header className="flex items-center gap-3 px-2 py-2">
+    <article className="animate-rise border-b border-border py-3 sm:rounded-3xl sm:border sm:bg-card sm:p-3">
+      <header className="flex items-center gap-3 px-4 py-2 sm:px-2">
         <Avatar src={post.user.avatar} ring />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1 font-medium">{post.user.name}{post.user.verified && <BadgeCheck className="h-4 w-4 fill-primary text-primary-foreground" />}</div>
@@ -68,7 +68,7 @@ function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: ()
       </header>
 
       {post.kind === "video" && (
-        <div className="relative overflow-hidden rounded-2xl">
+        <div className="relative overflow-hidden sm:rounded-2xl">
           {post.mediaIsVideo ? (
             <video src={post.media} className="aspect-[4/5] w-full object-cover" loop muted playsInline ref={(v) => { if (!v) return undefined; if (playing) { void v.play().catch(() => {}); } else { v.pause(); } return undefined; }} />
           ) : (
@@ -90,7 +90,7 @@ function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: ()
       )}
 
       {post.kind === "photo" && (
-        <div className="flex gap-3 px-2 pb-2">
+        <div className="flex gap-3 px-4 pb-2 sm:px-2">
           <div className="flex-1">
             <p className="mb-3">{post.caption}</p>
             <img src={post.media} alt="" className="w-full rounded-2xl object-cover" />
@@ -100,14 +100,14 @@ function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: ()
       )}
 
       {post.kind === "text" && (
-        <div className="flex gap-3 px-2 pb-2">
+        <div className="flex gap-3 px-4 pb-2 sm:px-2">
           <p className="flex-1 rounded-2xl bg-secondary p-5 text-xl font-medium leading-snug">{post.caption}</p>
           <div className="flex items-end"><Actions post={post} onLike={onLike} onComment={onComment} onShare={onShare} /></div>
         </div>
       )}
 
       {post.kind === "audio" && (
-        <div className="flex gap-3 px-2 pb-2">
+        <div className="flex gap-3 px-4 pb-2 sm:px-2">
           <div className="flex-1">
             <p className="mb-3">{post.caption}</p>
             <div className="flex items-center gap-3 rounded-2xl border border-border bg-background p-3">
@@ -274,7 +274,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
             </div>
             <LanePills lane={lane} setLane={setLane} />
           </header>
-          <div className="space-y-4 px-4 pt-2">
+          <div className="sm:space-y-4 sm:px-4 sm:pt-2">
             {feed.map((p) => <PostCard key={p.id} post={p} onLike={() => like(p.id)} onComment={() => setCommentsFor(p.id)} onShare={() => setShareFor(p)} />)}
             {feed.length === 0 && <p className="py-20 text-center text-muted-foreground">Nothing in this lane yet — drop something!</p>}
           </div>
