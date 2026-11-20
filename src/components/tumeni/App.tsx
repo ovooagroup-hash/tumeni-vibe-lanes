@@ -178,7 +178,7 @@ function CreatePost({ onClose, onPublish }: { onClose: () => void; onPublish: (p
   };
 
   return (
-    <div className="fixed inset-0 z-50 mx-auto flex max-w-md flex-col bg-background animate-rise">
+    <div className="fixed inset-0 z-50 mx-auto flex max-w-xl flex-col lg:border-x lg:border-border bg-background animate-rise">
       <div className="absolute inset-0 overflow-hidden">
         {kind === "text" ? <div className="h-full w-full bg-gradient-to-b from-secondary to-background" /> :
           media && isVideo ? <video src={media} autoPlay loop muted playsInline className="h-full w-full object-cover" /> :
@@ -251,13 +251,23 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
   const commentPost = posts.find((p) => p.id === commentsFor);
 
   return (
-    <div className="relative mx-auto min-h-dvh max-w-md pb-32">
+    <div className="mx-auto flex min-h-dvh w-full max-w-7xl justify-center gap-8 lg:px-6">
+      {/* Desktop sidebar */}
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-2 border-r border-border py-6 pr-4 lg:flex">
+        <div className="mb-6 flex items-center gap-2 px-3"><LogoMark className="h-10 w-10" /><span className="text-2xl font-bold">tumeni<span className="text-primary">.</span></span></div>
+        {([["home", Home, "Home"], ["explore", Search, "Explore"], ["messages", MessageCircle, "Messages"], ["profile", UserIcon, "Profile"]] as const).map(([t, I, l]) => (
+          <button key={t} onClick={() => { setTab(t); setOpenChat(null); }} className={`flex items-center gap-4 rounded-2xl px-3 py-3 text-lg transition hover:bg-secondary ${tab === t ? "font-bold text-primary" : ""}`}><I className="h-6 w-6" />{l}</button>
+        ))}
+        <button onClick={() => setCreating(true)} className="mt-4 flex h-12 items-center justify-center gap-2 rounded-full bg-primary font-semibold text-primary-foreground glow"><Plus className="h-5 w-5" /> Create</button>
+        <button onClick={() => setSwitcher(true)} className="mt-auto flex items-center gap-3 rounded-2xl p-2 hover:bg-secondary"><Avatar src={me.avatar} size={40} /><div className="text-left text-sm"><p className="font-medium">{me.name}</p><p className="text-muted-foreground">{me.handle}</p></div></button>
+      </aside>
+    <div className="relative min-h-dvh w-full min-w-0 max-w-xl pb-24 lg:pb-8">
       {tab === "home" && (
         <>
           <header className="sticky top-0 z-30 space-y-4 bg-background/85 px-4 pb-3 pt-5 backdrop-blur-xl">
             <div className="relative flex items-center justify-center">
-              <button aria-label="Switch profile" onClick={() => setSwitcher(true)} className="absolute left-0"><Avatar src={me.avatar} size={36} /></button>
-              <LogoMark className="h-12 w-12" />
+              <button aria-label="Switch profile" onClick={() => setSwitcher(true)} className="absolute left-0 lg:hidden"><Avatar src={me.avatar} size={36} /></button>
+              <LogoMark className="h-12 w-12 lg:hidden" />
               <button aria-label="Notifications" onClick={() => { setNotif(false); toast("Nala Gold co-signed your drop ✨"); }} className="absolute right-0">
                 <Bell className="h-7 w-7" />{notif && <span className="absolute -right-0.5 top-0 h-2.5 w-2.5 rounded-full bg-primary glow" />}
               </button>
@@ -286,12 +296,27 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
 
       {/* Bottom glass nav */}
       {!(tab === "messages" && openChat) && (
-        <nav className="fixed bottom-4 left-1/2 z-40 flex h-[72px] w-[calc(100%-2rem)] max-w-[26rem] -translate-x-1/2 items-center justify-around rounded-[2rem] border border-border bg-glass backdrop-blur-xl">
+        <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-center justify-around border-t border-border bg-glass pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
           {([["home", Home], ["explore", Search]] as const).map(([t, I]) => <NavBtn key={t} active={tab === t} onClick={() => setTab(t)} label={t}><I className="h-7 w-7" /></NavBtn>)}
           <button aria-label="Create post" onClick={() => setCreating(true)} className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-primary text-primary glow transition active:scale-90"><Plus className="h-7 w-7" /></button>
           {([["messages", MessageCircle], ["profile", UserIcon]] as const).map(([t, I]) => <NavBtn key={t} active={tab === t} onClick={() => { setTab(t); setOpenChat(null); }} label={t}><I className="h-7 w-7" /></NavBtn>)}
         </nav>
       )}
+
+    </div>
+      {/* Desktop right column */}
+      <aside className="sticky top-0 hidden h-dvh w-80 shrink-0 space-y-6 py-6 xl:block">
+        <div className="rounded-3xl border border-border bg-card p-5">
+          <h3 className="mb-3 font-bold">Who to follow</h3>
+          <div className="space-y-3">{Object.values(USERS).slice(0, 4).map((u) => <FollowRow key={u.id} u={u} />)}</div>
+        </div>
+        <div className="rounded-3xl border border-border bg-card p-5">
+          <h3 className="mb-3 font-bold">Trending lanes</h3>
+          <div className="space-y-2">{LANES.map((l) => (
+            <button key={l.id} onClick={() => { setLane(l.id); setTab("home"); }} className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left hover:bg-secondary"><span>{l.label}</span><span className="text-xs text-muted-foreground">{posts.filter((p) => p.lane === l.id).length} drops</span></button>
+          ))}</div>
+        </div>
+      </aside>
 
       <Sheet open={!!shareFor} onClose={() => setShareFor(null)} title="SEND IN">
         <div className="space-y-2">
@@ -445,7 +470,7 @@ function ChatView({ chat, onBack, onSend }: { chat: Chat; onBack: () => void; on
         })}
         <div ref={end} />
       </div>
-      <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) { onSend(text.trim()); setText(""); } }} className="fixed bottom-4 left-1/2 flex w-[calc(100%-2rem)] max-w-[26rem] -translate-x-1/2 gap-2 rounded-full border border-border bg-glass p-2 backdrop-blur-xl">
+      <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) { onSend(text.trim()); setText(""); } }} className="sticky bottom-4 mx-4 flex gap-2 rounded-full border border-border bg-glass p-2 backdrop-blur-xl">
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message…" className="flex-1 bg-transparent px-3 outline-none" />
         <button aria-label="Send message" className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground"><Send className="h-5 w-5" /></button>
       </form>
