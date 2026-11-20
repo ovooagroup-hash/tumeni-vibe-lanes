@@ -40,6 +40,8 @@ export type Post = {
   tag?: string | undefined;
   media?: string | undefined;
   mediaIsVideo?: boolean | undefined;
+  video?: string | undefined;
+  audio?: string | undefined;
   views?: number | undefined;
   duration?: string | undefined;
   track?: string | undefined;
@@ -52,13 +54,15 @@ export type Post = {
 const c = (u: UserId, t: string, i: number): Comment => ({ id: `${u}${i}`, user: USERS[u], text: t });
 
 export const SEED_POSTS: Post[] = [
-  { id: "p1", user: USERS.yung, lane: "circle", kind: "video", time: "2h ago", caption: "New drop otw 🔥", tag: "#StayTuned", media: artist, views: 48200, likes: 2400, shares: 120, comments: [c("zuri", "Been waiting for this!!", 1), c("dre", "Sheesh 🔥", 2)] },
+  { id: "p1", user: USERS.yung, lane: "circle", kind: "video", time: "2h ago", caption: "New drop otw 🔥", tag: "#StayTuned", media: artist, video: "https://download.samplelib.com/mp4/sample-10s.mp4", views: 48200, likes: 2400, shares: 120, comments: [c("zuri", "Been waiting for this!!", 1), c("dre", "Sheesh 🔥", 2)] },
   { id: "p2", user: USERS.haha, lane: "laughs", kind: "photo", time: "4h ago", caption: "Me pretending I didn't eat the last slice.", media: meme, likes: 1800, shares: 89, comments: [c("kito", "This is literally me 😭", 1)] },
-  { id: "p3", user: USERS.nala, lane: "music", kind: "audio", time: "5h ago", caption: "Late night session — rough cut 🎙️", track: "Golden Hour (demo)", media: studio, duration: "0:42", likes: 3100, shares: 210, comments: [c("yung", "Vocals are crazy", 1)] },
+  { id: "p3", user: USERS.nala, lane: "music", kind: "audio", time: "5h ago", caption: "Late night session — rough cut 🎙️", track: "Golden Hour (demo)", media: studio, duration: "0:42", audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", likes: 3100, shares: 210, comments: [c("yung", "Vocals are crazy", 1)] },
   { id: "p4", user: USERS.dre, lane: "laughs", kind: "text", time: "6h ago", caption: "Told my plants about my problems. Now they're dying too. Solidarity 🌱💀", likes: 940, shares: 55, comments: [] },
-  { id: "p5", user: USERS.kito, lane: "music", kind: "video", time: "8h ago", caption: "Cooking up a beat on the street 🥁", tag: "#BeatMaker", media: street, views: 12900, likes: 1200, shares: 64, comments: [c("nala", "Send me this one 👀", 1)] },
+  { id: "p5", user: USERS.kito, lane: "music", kind: "video", time: "8h ago", caption: "Cooking up a beat on the street 🥁", tag: "#BeatMaker", media: street, video: "https://download.samplelib.com/mp4/sample-15s.mp4", views: 12900, likes: 1200, shares: 64, comments: [c("nala", "Send me this one 👀", 1)] },
   { id: "p6", user: USERS.zuri, lane: "circle", kind: "photo", time: "10h ago", caption: "City lights hit different tonight ✨", media: street, likes: 760, shares: 18, comments: [] },
-  { id: "p7", user: USERS.kito, lane: "mix", kind: "audio", time: "1d ago", caption: "Afro-house loop, who's hopping on?", track: "Midnight Loop 04", duration: "0:30", likes: 530, shares: 40, comments: [] },
+  { id: "p7", user: USERS.kito, lane: "mix", kind: "audio", time: "1d ago", caption: "Afro-house loop, who's hopping on?", track: "Midnight Loop 04", duration: "0:30", audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3", likes: 530, shares: 40, comments: [] },
+  { id: "p9", user: USERS.nala, lane: "mix", kind: "video", time: "12h ago", caption: "Weekend energy only 🌊", tag: "#Vibes", media: studio, video: "https://download.samplelib.com/mp4/sample-20s.mp4", views: 30100, likes: 4100, shares: 230, comments: [c("zuri", "Take me there 😍", 1)] },
+  { id: "p10", user: USERS.dre, lane: "laughs", kind: "video", time: "20h ago", caption: "POV: you said 'one more episode' 😭", media: meme, video: "https://download.samplelib.com/mp4/sample-5s.mp4", views: 8800, likes: 990, shares: 77, comments: [] },
   { id: "p8", user: USERS.haha, lane: "mix", kind: "text", time: "1d ago", caption: "Group chat: 47 unread. Me: 'lol' 🙂", likes: 2200, shares: 300, comments: [] },
 ];
 

@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   Bell, Heart, MessageCircle, Send, Play, Pause, MoreHorizontal, BadgeCheck, Home, Search, Plus, User as UserIcon,
   X, ArrowLeft, Video, Image as ImageIcon, AudioLines, MessageSquareText, Users, Music, Laugh, Sparkles, Eye,
-  Crown, Bookmark, Zap, Check, LogOut, Repeat, Settings, Aperture,
+  Crown, Bookmark, Zap, Check, LogOut, Repeat, Settings, Aperture, Clapperboard, Volume2, VolumeX,
 } from "lucide-react";
 import { LogoMark } from "./Logo";
 import {
@@ -47,11 +47,13 @@ function Actions({ post, onLike, onComment, onShare }: { post: Post; onLike: () 
   );
 }
 
-function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: () => void; onComment: () => void; onShare: () => void }) {
+function PostCard({ post, onLike, onComment, onShare, onOpen }: { post: Post; onLike: () => void; onComment: () => void; onShare: () => void; onOpen?: (() => void) | undefined }) {
   const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  useEffect(() => { const a = audioRef.current; if (!a) return; if (playing) { void a.play().catch(() => {}); } else { a.pause(); } }, [playing]);
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
-    if (!playing || post.kind !== "audio") return;
+    if (!playing || post.kind !== "audio" || post.audio) return;
     const t = setInterval(() => setElapsed((e) => (e >= 42 ? 0 : e + 1)), 1000);
     return () => clearInterval(t);
   }, [playing, post.kind]);
@@ -75,7 +77,7 @@ function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: ()
             <img src={post.media} alt="" className={`aspect-[4/5] w-full object-cover transition duration-[8s] ${playing ? "scale-110" : ""}`} />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
-          <button aria-label={playing ? "Pause" : "Play"} onClick={() => setPlaying(!playing)} className={`absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-background/50 backdrop-blur transition ${playing ? "opacity-0 hover:opacity-100" : ""}`}>
+          <button aria-label={playing ? "Pause" : "Play"} onClick={() => (post.video && onOpen ? onOpen() : setPlaying(!playing))} className={`absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-background/50 backdrop-blur transition ${playing ? "opacity-0 hover:opacity-100" : ""}`}>
             {playing ? <Pause className="h-7 w-7 fill-foreground" /> : <Play className="ml-1 h-7 w-7 fill-foreground" />}
           </button>
           <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-background/60 px-2 py-1 text-xs backdrop-blur"><Eye className="h-3 w-3" /> {fmt(post.views ?? 0)}</div>
@@ -111,6 +113,7 @@ function PostCard({ post, onLike, onComment, onShare }: { post: Post; onLike: ()
           <div className="flex-1">
             <p className="mb-3">{post.caption}</p>
             <div className="flex items-center gap-3 rounded-2xl border border-border bg-background p-3">
+              {post.audio && <audio ref={audioRef} src={post.audio} loop preload="none" onTimeUpdate={(e) => setElapsed(Math.floor(e.currentTarget.currentTime) % 60)} />}
               {post.media ? <img src={post.media} alt="" className="h-14 w-14 rounded-xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-secondary"><Music className="text-primary" /></div>}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{post.track}</p>
@@ -235,6 +238,8 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
   const [profileIdx, setProfileIdx] = useState(0);
   const [switcher, setSwitcher] = useState(false);
   const [notif, setNotif] = useState(true);
+  const [reelAt, setReelAt] = useState<string | null>(null);
+  const reelPosts = posts.filter((p) => p.video || (p.mediaIsVideo && p.media));
   useEffect(() => { window.scrollTo({ top: 0 }); }, [tab, openChat]);
   const profile = PROFILES[profileIdx] ?? PROFILES[0]!;
   const me: User = { id: "me", name: profile.name, handle: profile.handle, avatar: profile.avatar };
@@ -258,6 +263,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
         {([["home", Home, "Home"], ["explore", Search, "Explore"], ["messages", MessageCircle, "Messages"], ["profile", UserIcon, "Profile"]] as const).map(([t, I, l]) => (
           <button key={t} onClick={() => { setTab(t); setOpenChat(null); }} className={`flex items-center gap-4 rounded-2xl px-3 py-3 text-lg transition hover:bg-secondary ${tab === t ? "font-bold text-primary" : ""}`}><I className="h-6 w-6" />{l}</button>
         ))}
+        <button onClick={() => setReelAt(reelPosts[0]?.id ?? null)} className="flex items-center gap-4 rounded-2xl px-3 py-3 text-lg transition hover:bg-secondary"><Clapperboard className="h-6 w-6" />Reels</button>
         <button onClick={() => setCreating(true)} className="mt-4 flex h-12 items-center justify-center gap-2 rounded-full bg-primary font-semibold text-primary-foreground glow"><Plus className="h-5 w-5" /> Create</button>
         <button onClick={() => setSwitcher(true)} className="mt-auto flex items-center gap-3 rounded-2xl p-2 hover:bg-secondary"><Avatar src={me.avatar} size={40} /><div className="text-left text-sm"><p className="font-medium">{me.name}</p><p className="text-muted-foreground">{me.handle}</p></div></button>
       </aside>
@@ -268,6 +274,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
             <div className="relative flex items-center justify-center">
               <button aria-label="Switch profile" onClick={() => setSwitcher(true)} className="absolute left-0 lg:hidden"><Avatar src={me.avatar} size={36} /></button>
               <LogoMark className="h-12 w-12 lg:hidden" />
+              <button aria-label="Watch reels" onClick={() => setReelAt(reelPosts[0]?.id ?? null)} className="absolute right-11"><Clapperboard className="h-7 w-7" /></button>
               <button aria-label="Notifications" onClick={() => { setNotif(false); toast("Nala Gold co-signed your drop ✨"); }} className="absolute right-0">
                 <Bell className="h-7 w-7" />{notif && <span className="absolute -right-0.5 top-0 h-2.5 w-2.5 rounded-full bg-primary glow" />}
               </button>
@@ -275,7 +282,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
             <LanePills lane={lane} setLane={setLane} />
           </header>
           <div className="sm:space-y-4 sm:px-4 sm:pt-2">
-            {feed.map((p) => <PostCard key={p.id} post={p} onLike={() => like(p.id)} onComment={() => setCommentsFor(p.id)} onShare={() => setShareFor(p)} />)}
+            {feed.map((p) => <PostCard key={p.id} post={p} onLike={() => like(p.id)} onComment={() => setCommentsFor(p.id)} onShare={() => setShareFor(p)} onOpen={() => setReelAt(p.id)} />)}
             {feed.length === 0 && <p className="py-20 text-center text-muted-foreground">Nothing in this lane yet — drop something!</p>}
           </div>
         </>
@@ -317,6 +324,8 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
           ))}</div>
         </div>
       </aside>
+
+      {reelAt && <Reels posts={reelPosts} startId={reelAt} onClose={() => setReelAt(null)} onLike={like} onComment={setCommentsFor} onShare={setShareFor} />}
 
       <Sheet open={!!shareFor} onClose={() => setShareFor(null)} title="SEND IN">
         <div className="space-y-2">
@@ -364,6 +373,7 @@ function SendRow({ chat, onSend }: { chat: Chat; onSend: () => void }) {
   const [sent, setSent] = useState(false);
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-border bg-background p-3">
+              {post.audio && <audio ref={audioRef} src={post.audio} loop preload="none" onTimeUpdate={(e) => setElapsed(Math.floor(e.currentTarget.currentTime) % 60)} />}
       <Avatar src={chat.avatar} /><div className="flex-1"><p className="font-medium">{chat.name}</p><p className="text-xs text-muted-foreground">{chat.group ? "Group · 5 members" : "Direct"}</p></div>
       <button disabled={sent} onClick={() => { onSend(); setSent(true); }} className={`h-9 rounded-full px-4 text-sm font-semibold ${sent ? "bg-secondary text-muted-foreground" : "bg-primary text-primary-foreground"}`}>{sent ? "Sent" : "Send"}</button>
     </div>
@@ -517,5 +527,75 @@ function Profile({ me, account, myPosts, onSwitch, onLogout }: { me: User; accou
         ))}
       </div>
     </div>
+  );
+}
+
+function Reels({ posts, startId, onClose, onLike, onComment, onShare }: { posts: Post[]; startId: string; onClose: () => void; onLike: (id: string) => void; onComment: (id: string) => void; onShare: (p: Post) => void }) {
+  const [active, setActive] = useState(startId);
+  const [muted, setMuted] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = box.current;
+    if (!root) return;
+    root.querySelector(`[data-id="${startId}"]`)?.scrollIntoView();
+    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) setActive((e.target as HTMLElement).dataset["id"] ?? ""); }), { root, threshold: 0.6 });
+    root.querySelectorAll("[data-id]").forEach((el) => io.observe(el));
+    document.body.style.overflow = "hidden";
+    return () => { io.disconnect(); document.body.style.overflow = ""; };
+  }, [startId]);
+  return (
+    <div className="fixed inset-0 z-50 bg-background">
+      <div ref={box} className="no-scrollbar mx-auto h-dvh max-w-xl snap-y snap-mandatory overflow-y-scroll">
+        {posts.map((p) => <Reel key={p.id} post={p} active={active === p.id} muted={muted} onLike={() => onLike(p.id)} onComment={() => onComment(p.id)} onShare={() => onShare(p)} />)}
+      </div>
+      <div className="pointer-events-none fixed inset-x-0 top-0 mx-auto flex max-w-xl items-center justify-between p-4">
+        <button aria-label="Close reels" onClick={onClose} className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-background/50 backdrop-blur"><ArrowLeft className="h-5 w-5" /></button>
+        <span className="font-bold">Reels<span className="text-primary">.</span></span>
+        <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)} className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-background/50 backdrop-blur">{muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}</button>
+      </div>
+    </div>
+  );
+}
+
+function Reel({ post, active, muted, onLike, onComment, onShare }: { post: Post; active: boolean; muted: boolean; onLike: () => void; onComment: () => void; onShare: () => void }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [paused, setPaused] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [burst, setBurst] = useState(0);
+  const lastTap = useRef(0);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (active && !paused) { void v.play().catch(() => { v.muted = true; void v.play().catch(() => {}); }); } else { v.pause(); }
+    if (!active) { v.currentTime = 0; setPaused(false); }
+  }, [active, paused]);
+  const tap = () => {
+    const now = Date.now();
+    if (now - lastTap.current < 280) { if (!post.liked) onLike(); setBurst((b) => b + 1); setPaused(false); }
+    else { setTimeout(() => { if (Date.now() - lastTap.current >= 280) setPaused((x) => !x); }, 300); }
+    lastTap.current = now;
+  };
+  return (
+    <section data-id={post.id} className="relative h-dvh w-full snap-start snap-always overflow-hidden">
+      <video ref={ref} src={post.video ?? post.media} poster={post.video ? post.media : undefined} muted={muted} loop playsInline preload="metadata" onClick={tap}
+        onTimeUpdate={(e) => setProgress((e.currentTarget.currentTime / (e.currentTarget.duration || 1)) * 100)} className="h-full w-full object-cover" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-background/30" />
+      {paused && <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-background/50 backdrop-blur"><Play className="ml-1 h-9 w-9 fill-foreground" /></div>}
+      {burst > 0 && <Heart key={burst} className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 animate-burst fill-primary text-primary" />}
+      <div className="absolute bottom-24 left-4 right-20 space-y-2 lg:bottom-10">
+        <div className="flex items-center gap-2"><Avatar src={post.user.avatar} size={36} ring /><span className="font-semibold">{post.user.handle}</span>{post.user.verified && <BadgeCheck className="h-4 w-4 fill-primary text-primary-foreground" />}
+          <button onClick={() => toast.success(`Tapped in with ${post.user.name}`)} className="ml-1 rounded-full border border-foreground/60 px-3 py-0.5 text-xs font-semibold">Tap in</button></div>
+        <p>{post.caption} {post.tag && <span className="text-primary">{post.tag}</span>}</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground"><Music className="h-4 w-4 text-primary" /><span className="truncate">Original sound — {post.user.name}</span></div>
+      </div>
+      <div className="absolute bottom-24 right-3 flex flex-col items-center gap-5 lg:bottom-10">
+        <button aria-label="Like" onClick={onLike} className="flex flex-col items-center gap-1 text-xs font-medium active:scale-90"><Heart className={`h-8 w-8 ${post.liked ? "fill-primary text-primary" : ""}`} />{fmt(post.likes)}</button>
+        <button aria-label="Comments" onClick={onComment} className="flex flex-col items-center gap-1 text-xs font-medium active:scale-90"><MessageCircle className="h-8 w-8" />{fmt(post.comments.length)}</button>
+        <button aria-label="Send in" onClick={onShare} className="flex flex-col items-center gap-1 text-xs font-medium active:scale-90"><Send className="h-8 w-8" />{fmt(post.shares)}</button>
+        <button aria-label="Save" onClick={() => toast("Saved to your collection")} className="active:scale-90"><Bookmark className="h-7 w-7" /></button>
+        <div className={`h-10 w-10 overflow-hidden rounded-full border-4 border-secondary ${active && !paused ? "animate-spin [animation-duration:4s]" : ""}`}><Avatar src={post.user.avatar} size={32} /></div>
+      </div>
+      <div className="absolute inset-x-0 bottom-0 h-1 bg-foreground/20"><div className="h-full bg-primary" style={{ width: `${progress}%` }} /></div>
+    </section>
   );
 }
