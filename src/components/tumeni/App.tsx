@@ -373,7 +373,6 @@ function SendRow({ chat, onSend }: { chat: Chat; onSend: () => void }) {
   const [sent, setSent] = useState(false);
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-border bg-background p-3">
-              {post.audio && <audio ref={audioRef} src={post.audio} loop preload="none" onTimeUpdate={(e) => setElapsed(Math.floor(e.currentTarget.currentTime) % 60)} />}
       <Avatar src={chat.avatar} /><div className="flex-1"><p className="font-medium">{chat.name}</p><p className="text-xs text-muted-foreground">{chat.group ? "Group · 5 members" : "Direct"}</p></div>
       <button disabled={sent} onClick={() => { onSend(); setSent(true); }} className={`h-9 rounded-full px-4 text-sm font-semibold ${sent ? "bg-secondary text-muted-foreground" : "bg-primary text-primary-foreground"}`}>{sent ? "Sent" : "Send"}</button>
     </div>
