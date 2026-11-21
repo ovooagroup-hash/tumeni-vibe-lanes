@@ -10,6 +10,7 @@ import {
   LANES, SEED_POSTS, SEED_CHATS, USERS, PROFILES, GRID, fmt, getUser, type Lane, type Kind, type Post, type Chat, type User,
 } from "./data";
 import street from "@/assets/street.jpg";
+import { toggleSelection, type SetupProfile } from "./onboarding";
 
 type Tab = "home" | "explore" | "messages" | "profile";
 const LANE_ICON = { circle: Users, music: Music, laughs: Laugh, mix: Sparkles };
@@ -226,7 +227,7 @@ function CreatePost({ onClose, onPublish }: { onClose: () => void; onPublish: (p
   );
 }
 
-export function TumeniApp({ account, onLogout }: { account: string; onLogout: () => void }) {
+export function TumeniApp({ account, setup, onSetupChange, onLogout }: { account: string; setup: SetupProfile; onSetupChange: (profile: SetupProfile) => void; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("home");
   const [lane, setLane] = useState<Lane>("circle");
   const [posts, setPosts] = useState<Post[]>(SEED_POSTS);
@@ -241,8 +242,10 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
   const [reelAt, setReelAt] = useState<string | null>(null);
   const reelPosts = posts.filter((p) => p.video || (p.mediaIsVideo && p.media));
   useEffect(() => { window.scrollTo({ top: 0 }); }, [tab, openChat]);
-  const profile = PROFILES[profileIdx] ?? PROFILES[0]!;
+  const profiles = [ { id: "me", name: setup.name, handle: setup.handle, avatar: setup.avatar }, ...PROFILES.slice(1) ];
+  const profile = profiles[profileIdx] ?? setup;
   const me: User = { id: "me", name: profile.name, handle: profile.handle, avatar: profile.avatar };
+  const follow = (id: string) => onSetupChange({ ...setup, following: toggleSelection(setup.following, id) });
 
   const feed = lane === "mix" ? posts : posts.filter((p) => p.lane === lane || (lane === "circle" && p.user.id === "me"));
   const myPosts = posts.filter((p) => p.user.id === "me");
@@ -288,7 +291,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
         </>
       )}
 
-      {tab === "explore" && <Explore posts={posts} onOpen={(p) => { setLane(p.lane); setTab("home"); }} />}
+      {tab === "explore" && <Explore posts={posts} following={setup.following} onFollow={follow} onOpen={(p) => { setLane(p.lane); setTab("home"); }} />}
 
       {tab === "messages" && (openChat ? (
         <ChatView chat={chats.find((c) => c.id === openChat)!} onBack={() => setOpenChat(null)} onSend={(text) => {
@@ -299,7 +302,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
         <Messages chats={chats} onOpen={setOpenChat} />
       ))}
 
-      {tab === "profile" && <Profile me={me} account={account} myPosts={myPosts} onSwitch={() => setSwitcher(true)} onLogout={onLogout} />}
+      {tab === "profile" && <Profile me={me} bio={profileIdx === 0 ? setup.bio : "Studio sessions & new sounds"} interests={profileIdx === 0 ? setup.interests : []} account={account} myPosts={myPosts} onSwitch={() => setSwitcher(true)} onLogout={onLogout} />}
 
       {/* Bottom glass nav */}
       {!(tab === "messages" && openChat) && (
@@ -315,7 +318,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
       <aside className="sticky top-0 hidden h-dvh w-80 shrink-0 space-y-6 py-6 xl:block">
         <div className="rounded-3xl border border-border bg-card p-5">
           <h3 className="mb-3 font-bold">Who to follow</h3>
-          <div className="space-y-3">{Object.values(USERS).slice(0, 4).map((u) => <FollowRow key={u.id} u={u} />)}</div>
+          <div className="space-y-3">{Object.values(USERS).slice(0, 4).map((u) => <FollowRow key={u.id} u={u} following={setup.following.includes(u.id)} onFollow={() => follow(u.id)} />)}</div>
         </div>
         <div className="rounded-3xl border border-border bg-card p-5">
           <h3 className="mb-3 font-bold">Trending lanes</h3>
@@ -342,7 +345,7 @@ export function TumeniApp({ account, onLogout }: { account: string; onLogout: ()
 
       <Sheet open={switcher} onClose={() => setSwitcher(false)} title="Switch profile">
         <div className="space-y-2">
-          {PROFILES.map((p, i) => (
+          {profiles.map((p, i) => (
             <button key={p.id} onClick={() => { setProfileIdx(i); setSwitcher(false); toast(`Switched to ${p.handle}`); }} className="flex w-full items-center gap-3 rounded-2xl border border-border p-3">
               <Avatar src={p.avatar} /><div className="flex-1 text-left"><p className="font-medium">{p.name}</p><p className="text-xs text-muted-foreground">{p.handle}</p></div>
               {i === profileIdx && <Check className="text-primary" />}
@@ -398,7 +401,7 @@ function Comments({ post, me, onAdd }: { post: Post; me: User; onAdd: (t: string
   );
 }
 
-function Explore({ posts, onOpen }: { posts: Post[]; onOpen: (p: Post) => void }) {
+function Explore({ posts, following, onFollow, onOpen }: { posts: Post[]; following: string[]; onFollow: (id: string) => void; onOpen: (p: Post) => void }) {
   const [q, setQ] = useState("");
   const list = posts.filter((p) => (p.caption + p.user.name + (p.tag ?? "")).toLowerCase().includes(q.toLowerCase()));
   return (
@@ -415,17 +418,16 @@ function Explore({ posts, onOpen }: { posts: Post[]; onOpen: (p: Post) => void }
         ))}
       </div>
       <h2 className="mb-3 mt-6 font-semibold">Creators to tap into</h2>
-      <div className="space-y-2">{Object.values(USERS).slice(0, 4).map((u) => <FollowRow key={u.id} u={u} />)}</div>
+      <div className="space-y-2">{Object.values(USERS).slice(0, 4).map((u) => <FollowRow key={u.id} u={u} following={following.includes(u.id)} onFollow={() => onFollow(u.id)} />)}</div>
     </div>
   );
 }
 
-function FollowRow({ u }: { u: User }) {
-  const [on, setOn] = useState(false);
+function FollowRow({ u, following: on, onFollow }: { u: User; following: boolean; onFollow: () => void }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
       <Avatar src={u.avatar} /><div className="flex-1"><p className="font-medium">{u.name}</p><p className="text-xs text-muted-foreground">{u.handle}</p></div>
-      <button onClick={() => setOn(!on)} className={`h-9 rounded-full px-4 text-sm font-semibold ${on ? "border border-border" : "bg-primary text-primary-foreground"}`}>{on ? "Tapped in" : "Tap in"}</button>
+      <button onClick={onFollow} className={`h-9 rounded-full px-4 text-sm font-semibold ${on ? "border border-border" : "bg-primary text-primary-foreground"}`}>{on ? "Tapped in" : "Tap in"}</button>
     </div>
   );
 }
@@ -487,7 +489,7 @@ function ChatView({ chat, onBack, onSend }: { chat: Chat; onBack: () => void; on
   );
 }
 
-function Profile({ me, account, myPosts, onSwitch, onLogout }: { me: User; account: string; myPosts: Post[]; onSwitch: () => void; onLogout: () => void }) {
+function Profile({ me, bio, interests, account, myPosts, onSwitch, onLogout }: { me: User; bio: string; interests: string[]; account: string; myPosts: Post[]; onSwitch: () => void; onLogout: () => void }) {
   const [filter, setFilter] = useState<"all" | "video" | "photo" | "audio">("all");
   const items = [
     ...myPosts.map((p) => ({ src: p.media, kind: p.kind, text: p.caption })),
@@ -502,9 +504,10 @@ function Profile({ me, account, myPosts, onSwitch, onLogout }: { me: User; accou
       <div className="flex items-center justify-between"><button onClick={onSwitch} className="text-sm text-muted-foreground">Switch ⇄</button><button aria-label="Log out" onClick={onLogout}><LogOut className="h-5 w-5" /></button></div>
       <div className="mt-2 flex flex-col items-center">
         <Avatar src={me.avatar} size={96} ring />
-        <h1 className="mt-4 text-2xl font-bold">{me.name}</h1>
+        <h1 className="mt-4 max-w-full break-words text-center text-2xl font-bold">{me.name}</h1>
         <p className="text-sm text-muted-foreground">{me.handle} · {account.split(":")[1]}</p>
-        <p className="mt-2 text-center text-sm">Vibes, sounds & laughs only ✨</p>
+        <p className="mt-2 max-w-full break-words text-center text-sm">{bio}</p>
+        {interests.length > 0 && <p className="mt-3 text-center text-xs text-muted-foreground">{interests.join(" · ")}</p>}
       </div>
       <div className="mt-6 grid grid-cols-2 gap-3">
         {stats.map(({ label, value, I }) => (

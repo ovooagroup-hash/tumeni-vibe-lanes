@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Auth } from "@/components/tumeni/Auth";
 import { TumeniApp } from "@/components/tumeni/App";
+import { readSetup, type SetupProfile } from "@/components/tumeni/onboarding";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -20,11 +21,25 @@ export const Route = createFileRoute("/")({
 function Index() {
   const [account, setAccount] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  useEffect(() => { setAccount(localStorage.getItem("tumeni-account")); setReady(true); }, []);
+  const [setup, setSetup] = useState<SetupProfile | null>(null);
+  const [storageError, setStorageError] = useState(false);
+  useEffect(() => {
+    try {
+      const id = localStorage.getItem("tumeni-account");
+      setAccount(id);
+      if (id) setSetup(readSetup(localStorage.getItem(`tumeni-setup:${id}`)));
+    } catch { setStorageError(true); }
+    setReady(true);
+  }, []);
+  const saveSetup = (id: string, profile: SetupProfile) => {
+    try { localStorage.setItem(`tumeni-setup:${id}`, JSON.stringify(profile)); localStorage.setItem("tumeni-account", id); setStorageError(false); }
+    catch { setStorageError(true); }
+    setSetup(profile); setAccount(id);
+  };
   if (!ready) return <div className="min-h-dvh bg-background" />;
-  return account ? (
-    <TumeniApp account={account} onLogout={() => { localStorage.removeItem("tumeni-account"); setAccount(null); }} />
+  return <>{storageError && <p role="status" className="bg-secondary px-4 py-2 text-center text-sm text-muted-foreground">Your details will only last for this visit. Browser storage is unavailable or full.</p>}{account && setup ? (
+    <TumeniApp account={account} setup={setup} onSetupChange={(p) => saveSetup(account, p)} onLogout={() => { try { localStorage.removeItem("tumeni-account"); } catch { /* Continue in this visit. */ } setAccount(null); setSetup(null); }} />
   ) : (
-    <Auth onLogin={(id) => { localStorage.setItem("tumeni-account", id); setAccount(id); }} />
-  );
+    <Auth initialAccount={account} onLogin={saveSetup} />
+  )}</>;
 }

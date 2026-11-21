@@ -1,0 +1,3 @@
+- [x] Add instant test sign-in and profile setup.
+- [x] Add interest selection and creator/friend connections.
+- [x] Carry setup into the app and verify desktop/mobile flows.
