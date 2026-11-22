@@ -147,3 +147,6 @@
 @utility no-scrollbar { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
 @keyframes burst { 0% { opacity: 0; transform: translate(-50%,-50%) scale(0.3); } 30% { opacity: 1; transform: translate(-50%,-50%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%,-50%) scale(1); } }
 @utility animate-burst { animation: burst 0.8s ease-out forwards; }
+
+@keyframes story-fill { from { width: 0 } to { width: 100% } }
+.story-progress { animation: story-fill 5s linear forwards; }

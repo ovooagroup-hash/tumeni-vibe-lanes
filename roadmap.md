@@ -1,3 +1,4 @@
 - [x] Add instant test sign-in and profile setup.
 - [x] Add interest selection and creator/friend connections.
-- [x] Carry setup into the app and verify desktop/mobile flows.
+- [x] Carry setup into the app and verify desktop/mobile flows.- [x] Step 2: Stories (Vibe Drops) row + full-screen player.
+- [x] Profile fixes: edit profile, real counts, Drops/Saved tabs, working save.

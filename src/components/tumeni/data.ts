@@ -47,6 +47,7 @@ export type Post = {
   track?: string | undefined;
   likes: number;
   liked?: boolean | undefined;
+  saved?: boolean | undefined;
   shares: number;
   comments: Comment[];
 };

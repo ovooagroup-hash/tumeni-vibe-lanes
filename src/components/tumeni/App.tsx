@@ -10,7 +10,8 @@ import {
   LANES, SEED_POSTS, SEED_CHATS, USERS, PROFILES, GRID, fmt, getUser, type Lane, type Kind, type Post, type Chat, type User,
 } from "./data";
 import street from "@/assets/street.jpg";
-import { toggleSelection, type SetupProfile } from "./onboarding";
+import { toggleSelection, profileError, type SetupProfile } from "./onboarding";
+import { StoriesBar } from "./Stories";
 
 type Tab = "home" | "explore" | "messages" | "profile";
 const LANE_ICON = { circle: Users, music: Music, laughs: Laugh, mix: Sparkles };
@@ -256,6 +257,7 @@ export function TumeniApp({ account, setup, onSetupChange, onLogout }: { account
     setPosts((ps) => ps.map((p) => (p.id === post.id ? { ...p, shares: p.shares + 1 } : p)));
     toast.success(`Sent into ${chats.find((c) => c.id === chatId)?.name}`);
   };
+  const save = (id: string) => setPosts((ps) => ps.map((p) => (p.id === id ? { ...p, saved: !p.saved } : p)));
   const commentPost = posts.find((p) => p.id === commentsFor);
 
   return (
@@ -284,7 +286,8 @@ export function TumeniApp({ account, setup, onSetupChange, onLogout }: { account
             </div>
             <LanePills lane={lane} setLane={setLane} />
           </header>
-          <div className="sm:space-y-4 sm:px-4 sm:pt-2">
+          <div className="border-b border-border sm:mx-4 sm:rounded-3xl sm:border sm:bg-card"><StoriesBar me={me} /></div>
+          <div className="sm:space-y-4 sm:px-4 sm:pt-4">
             {feed.map((p) => <PostCard key={p.id} post={p} onLike={() => like(p.id)} onComment={() => setCommentsFor(p.id)} onShare={() => setShareFor(p)} onOpen={() => setReelAt(p.id)} />)}
             {feed.length === 0 && <p className="py-20 text-center text-muted-foreground">Nothing in this lane yet — drop something!</p>}
           </div>
@@ -302,7 +305,7 @@ export function TumeniApp({ account, setup, onSetupChange, onLogout }: { account
         <Messages chats={chats} onOpen={setOpenChat} />
       ))}
 
-      {tab === "profile" && <Profile me={me} bio={profileIdx === 0 ? setup.bio : "Studio sessions & new sounds"} interests={profileIdx === 0 ? setup.interests : []} account={account} myPosts={myPosts} onSwitch={() => setSwitcher(true)} onLogout={onLogout} />}
+      {tab === "profile" && <Profile me={me} bio={profileIdx === 0 ? setup.bio : "Studio sessions & new sounds"} interests={profileIdx === 0 ? setup.interests : []} account={account} myPosts={myPosts} saved={posts.filter((p) => p.saved)} following={setup.following.length} editable={profileIdx === 0} onEdit={(v) => onSetupChange({ ...setup, ...v })} onOpen={(id) => setReelAt(id)} onSwitch={() => setSwitcher(true)} onLogout={onLogout} />}
 
       {/* Bottom glass nav */}
       {!(tab === "messages" && openChat) && (
@@ -328,7 +331,7 @@ export function TumeniApp({ account, setup, onSetupChange, onLogout }: { account
         </div>
       </aside>
 
-      {reelAt && <Reels posts={reelPosts} startId={reelAt} onClose={() => setReelAt(null)} onLike={like} onComment={setCommentsFor} onShare={setShareFor} />}
+      {reelAt && <Reels posts={reelPosts} startId={reelAt} onClose={() => setReelAt(null)} onLike={like} onComment={setCommentsFor} onShare={setShareFor} onSave={save} />}
 
       <Sheet open={!!shareFor} onClose={() => setShareFor(null)} title="SEND IN">
         <div className="space-y-2">
@@ -489,50 +492,97 @@ function ChatView({ chat, onBack, onSend }: { chat: Chat; onBack: () => void; on
   );
 }
 
-function Profile({ me, bio, interests, account, myPosts, onSwitch, onLogout }: { me: User; bio: string; interests: string[]; account: string; myPosts: Post[]; onSwitch: () => void; onLogout: () => void }) {
+function Profile({ me, bio, interests, account, myPosts, saved, following, editable, onEdit, onOpen, onSwitch, onLogout }: { me: User; bio: string; interests: string[]; account: string; myPosts: Post[]; saved: Post[]; following: number; editable: boolean; onEdit: (v: { name: string; handle: string; bio: string; avatar: string }) => void; onOpen: (id: string) => void; onSwitch: () => void; onLogout: () => void }) {
+  const [tab, setTab] = useState<"drops" | "saved">("drops");
   const [filter, setFilter] = useState<"all" | "video" | "photo" | "audio">("all");
-  const items = [
-    ...myPosts.map((p) => ({ src: p.media, kind: p.kind, text: p.caption })),
-    ...GRID.map((src, i) => ({ src, kind: (["video", "photo", "audio"] as const)[i % 3], text: "" })),
-  ].filter((i) => filter === "all" || i.kind === filter);
+  const [editing, setEditing] = useState(false);
+  const base = tab === "saved" ? saved.map((p) => ({ id: p.id, src: p.media, kind: p.kind, text: p.caption, video: !!p.video }))
+    : [...myPosts.map((p) => ({ id: p.id, src: p.media, kind: p.kind, text: p.caption, video: !!p.video })), ...GRID.map((src, i) => ({ id: `g${i}`, src, kind: (["video", "photo", "audio"] as const)[i % 3] as Kind, text: "", video: false }))];
+  const items = base.filter((i) => filter === "all" || i.kind === filter);
+  const totalLikes = myPosts.reduce((n, p) => n + p.likes, 0) + 8400;
   const stats = [
-    { label: "TAP-INS", value: "1.2K", I: Users }, { label: "CO-SIGNS", value: "8.4K", I: Heart },
-    { label: "SAVED", value: "312", I: Bookmark },
+    { label: "TAP-INS", value: fmt(1200 + following), I: Users }, { label: "CO-SIGNS", value: fmt(totalLikes), I: Heart },
+    { label: "SAVED", value: fmt(saved.length), I: Bookmark },
   ];
+  const share = () => { void navigator.clipboard?.writeText(`${location.origin}/${me.handle}`).catch(() => {}); toast.success("Profile link copied"); };
   return (
-    <div className="px-4 pt-6">
-      <div className="flex items-center justify-between"><button onClick={onSwitch} className="text-sm text-muted-foreground">Switch ⇄</button><button aria-label="Log out" onClick={onLogout}><LogOut className="h-5 w-5" /></button></div>
-      <div className="mt-2 flex flex-col items-center">
-        <Avatar src={me.avatar} size={96} ring />
-        <h1 className="mt-4 max-w-full break-words text-center text-2xl font-bold">{me.name}</h1>
-        <p className="text-sm text-muted-foreground">{me.handle} · {account.split(":")[1]}</p>
-        <p className="mt-2 max-w-full break-words text-center text-sm">{bio}</p>
-        {interests.length > 0 && <p className="mt-3 text-center text-xs text-muted-foreground">{interests.join(" · ")}</p>}
+    <div className="pb-6">
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/85 px-4 py-3 backdrop-blur-xl">
+        <button onClick={onSwitch} className="flex items-center gap-1 font-bold">{me.handle}<Repeat className="h-4 w-4 text-muted-foreground" /></button>
+        <button aria-label="Log out" onClick={onLogout} className="text-muted-foreground hover:text-foreground"><LogOut className="h-5 w-5" /></button>
       </div>
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        {stats.map(({ label, value, I }) => (
-          <div key={label} className="rounded-3xl border border-border bg-card p-4"><I className="h-5 w-5 text-primary" /><p className="mt-3 text-2xl font-bold">{value}</p><p className="text-xs tracking-widest text-muted-foreground">{label}</p></div>
-        ))}
-        <div className="relative overflow-hidden rounded-3xl border border-primary bg-gradient-to-br from-primary/25 to-card p-4 glow">
-          <Crown className="h-5 w-5 text-primary" /><p className="mt-3 text-2xl font-bold text-primary">VIP</p><p className="text-xs tracking-widest text-muted-foreground">CREW PASSES · 3</p>
+      <div className="px-4 pt-5">
+        <div className="flex items-center gap-5">
+          <Avatar src={me.avatar} size={88} ring />
+          <div className="grid flex-1 grid-cols-3 text-center">
+            <div><p className="text-lg font-bold">{myPosts.length + GRID.length}</p><p className="text-xs text-muted-foreground">Drops</p></div>
+            <div><p className="text-lg font-bold">{fmt(1200 + following)}</p><p className="text-xs text-muted-foreground">Tap-ins</p></div>
+            <div><p className="text-lg font-bold">{following}</p><p className="text-xs text-muted-foreground">Tapped</p></div>
+          </div>
+        </div>
+        <h1 className="mt-3 break-words text-lg font-bold">{me.name}</h1>
+        <p className="text-xs text-muted-foreground">{account.split(":")[1]}</p>
+        {bio && <p className="mt-1 whitespace-pre-line break-words text-sm">{bio}</p>}
+        {interests.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{interests.map((t) => <span key={t} className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground">{t}</span>)}</div>}
+        <div className="mt-4 flex gap-2">
+          {editable && <button onClick={() => setEditing(true)} className="flex-1 rounded-xl bg-secondary py-2 text-sm font-semibold">Edit profile</button>}
+          <button onClick={share} className="flex-1 rounded-xl bg-secondary py-2 text-sm font-semibold">Share profile</button>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          {stats.map(({ label, value, I }) => (
+            <div key={label} className="rounded-3xl border border-border bg-card p-4"><I className="h-5 w-5 text-primary" /><p className="mt-3 text-2xl font-bold">{value}</p><p className="text-xs tracking-widest text-muted-foreground">{label}</p></div>
+          ))}
+          <div className="relative overflow-hidden rounded-3xl border border-primary bg-gradient-to-br from-primary/25 to-card p-4 glow">
+            <Crown className="h-5 w-5 text-primary" /><p className="mt-3 text-2xl font-bold text-primary">VIP</p><p className="text-xs tracking-widest text-muted-foreground">CREW PASSES · 3</p>
+          </div>
         </div>
       </div>
-      <div className="mt-6 flex gap-2">{(["all", "video", "photo", "audio"] as const).map((f) => <button key={f} onClick={() => setFilter(f)} className={`flex-1 rounded-full border py-1.5 text-sm capitalize ${filter === f ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>{f}</button>)}</div>
-      <div className="mt-3 grid grid-cols-3 gap-1">
-        {items.map((it, i) => (
-          <div key={i} className="relative aspect-[3/4] overflow-hidden rounded-xl bg-card">
-            {it.src && it.kind !== "audio" ? <img src={it.src} alt="" className="h-full w-full object-cover" /> :
-              it.kind === "audio" ? <div className="flex h-full flex-col items-center justify-center gap-2 bg-secondary"><Waveform playing={false} bars={10} className="h-8" /></div> :
-              <p className="p-2 text-xs">{it.text}</p>}
-            <span className="absolute right-1.5 top-1.5">{it.kind === "video" ? <Play className="h-4 w-4 fill-foreground" /> : it.kind === "audio" ? <AudioLines className="h-4 w-4 text-primary" /> : it.kind === "photo" ? <ImageIcon className="h-4 w-4" /> : null}</span>
-          </div>
-        ))}
+      <div className="mt-6 flex border-b border-border">
+        {(["drops", "saved"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={`flex-1 border-b-2 py-3 text-sm font-semibold capitalize ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{t}</button>)}
       </div>
+      <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3">{(["all", "video", "photo", "audio"] as const).map((f) => <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-sm capitalize ${filter === f ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{f}</button>)}</div>
+      {items.length === 0 ? <p className="py-16 text-center text-sm text-muted-foreground">{tab === "saved" ? "Save drops from the feed and they show up here." : "Nothing here yet."}</p> : (
+        <div className="grid grid-cols-3 gap-0.5">
+          {items.map((it) => (
+            <button key={it.id} onClick={() => it.video ? onOpen(it.id) : undefined} className="relative aspect-[3/4] overflow-hidden bg-card">
+              {it.src && it.kind !== "audio" ? <img src={it.src} alt="" className="h-full w-full object-cover transition hover:scale-105" /> :
+                it.kind === "audio" ? <div className="flex h-full items-center justify-center bg-secondary"><Waveform playing={false} bars={10} className="h-8" /></div> :
+                <p className="p-2 text-left text-xs">{it.text}</p>}
+              <span className="absolute right-1.5 top-1.5">{it.kind === "video" ? <Play className="h-4 w-4 fill-foreground" /> : it.kind === "audio" ? <AudioLines className="h-4 w-4 text-primary" /> : it.kind === "photo" ? <ImageIcon className="h-4 w-4" /> : null}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {editing && <EditProfile me={me} bio={bio} onClose={() => setEditing(false)} onSave={(v) => { onEdit(v); setEditing(false); toast.success("Profile updated"); }} />}
     </div>
   );
 }
 
-function Reels({ posts, startId, onClose, onLike, onComment, onShare }: { posts: Post[]; startId: string; onClose: () => void; onLike: (id: string) => void; onComment: (id: string) => void; onShare: (p: Post) => void }) {
+const AVATAR_CHOICES = ["https://i.pravatar.cc/150?img=33", "https://i.pravatar.cc/150?img=5", "https://i.pravatar.cc/150?img=15", "https://i.pravatar.cc/150?img=49", "😎", "👑", "🔥", "🎧"];
+
+function EditProfile({ me, bio, onClose, onSave }: { me: User; bio: string; onClose: () => void; onSave: (v: { name: string; handle: string; bio: string; avatar: string }) => void }) {
+  const [name, setName] = useState(me.name);
+  const [handle, setHandle] = useState(me.handle.replace(/^@/, ""));
+  const [text, setText] = useState(bio);
+  const [pic, setPic] = useState(me.avatar);
+  const err = profileError(name, handle);
+  const choices = AVATAR_CHOICES.includes(pic) ? AVATAR_CHOICES : [pic, ...AVATAR_CHOICES];
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/70 backdrop-blur sm:items-center" onClick={onClose}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (!err) onSave({ name: name.trim(), handle: `@${handle.replace(/^@/, "")}`, bio: text.trim(), avatar: pic }); }} className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-border bg-card p-5 sm:rounded-3xl">
+        <div className="mb-4 flex items-center justify-between"><button type="button" onClick={onClose} aria-label="Cancel"><X className="h-6 w-6" /></button><h2 className="font-bold">Edit profile</h2><button disabled={!!err} className="font-semibold text-primary disabled:opacity-40">Save</button></div>
+        <div className="flex justify-center"><Avatar src={pic} size={88} ring /></div>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">{choices.map((c) => <button type="button" key={c} onClick={() => setPic(c)} className={`rounded-full ${pic === c ? "ring-2 ring-primary" : ""}`}><Avatar src={c} size={40} /></button>)}</div>
+        <label className="mt-5 block text-xs text-muted-foreground">Display name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none focus:border-primary" /></label>
+        <label className="mt-3 block text-xs text-muted-foreground">Handle<div className="mt-1 flex rounded-xl border border-border bg-background px-3 focus-within:border-primary"><span className="py-2.5 text-muted-foreground">@</span><input value={handle} onChange={(e) => setHandle(e.target.value)} className="w-full bg-transparent py-2.5 text-base text-foreground outline-none" /></div></label>
+        <label className="mt-3 block text-xs text-muted-foreground">Bio<textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={150} rows={3} className="mt-1 w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground outline-none focus:border-primary" /><span className="block text-right">{text.length}/150</span></label>
+        {err && <p className="text-sm text-destructive">{err}</p>}
+      </form>
+    </div>
+  );
+}
+
+function Reels({ posts, startId, onClose, onLike, onComment, onShare, onSave }: { posts: Post[]; startId: string; onClose: () => void; onLike: (id: string) => void; onComment: (id: string) => void; onShare: (p: Post) => void; onSave: (id: string) => void }) {
   const [active, setActive] = useState(startId);
   const [muted, setMuted] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -548,7 +598,7 @@ function Reels({ posts, startId, onClose, onLike, onComment, onShare }: { posts:
   return (
     <div className="fixed inset-0 z-50 bg-background">
       <div ref={box} className="no-scrollbar mx-auto h-dvh max-w-xl snap-y snap-mandatory overflow-y-scroll">
-        {posts.map((p) => <Reel key={p.id} post={p} active={active === p.id} muted={muted} onLike={() => onLike(p.id)} onComment={() => onComment(p.id)} onShare={() => onShare(p)} />)}
+        {posts.map((p) => <Reel key={p.id} post={p} active={active === p.id} muted={muted} onLike={() => onLike(p.id)} onComment={() => onComment(p.id)} onShare={() => onShare(p)} onSave={() => onSave(p.id)} />)}
       </div>
       <div className="pointer-events-none fixed inset-x-0 top-0 mx-auto flex max-w-xl items-center justify-between p-4">
         <button aria-label="Close reels" onClick={onClose} className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-background/50 backdrop-blur"><ArrowLeft className="h-5 w-5" /></button>
@@ -559,7 +609,7 @@ function Reels({ posts, startId, onClose, onLike, onComment, onShare }: { posts:
   );
 }
 
-function Reel({ post, active, muted, onLike, onComment, onShare }: { post: Post; active: boolean; muted: boolean; onLike: () => void; onComment: () => void; onShare: () => void }) {
+function Reel({ post, active, muted, onLike, onComment, onShare, onSave }: { post: Post; active: boolean; muted: boolean; onLike: () => void; onComment: () => void; onShare: () => void; onSave: () => void }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -594,7 +644,7 @@ function Reel({ post, active, muted, onLike, onComment, onShare }: { post: Post;
         <button aria-label="Like" onClick={onLike} className="flex flex-col items-center gap-1 text-xs font-medium active:scale-90"><Heart className={`h-8 w-8 ${post.liked ? "fill-primary text-primary" : ""}`} />{fmt(post.likes)}</button>
         <button aria-label="Comments" onClick={onComment} className="flex flex-col items-center gap-1 text-xs font-medium active:scale-90"><MessageCircle className="h-8 w-8" />{fmt(post.comments.length)}</button>
         <button aria-label="Send in" onClick={onShare} className="flex flex-col items-center gap-1 text-xs font-medium active:scale-90"><Send className="h-8 w-8" />{fmt(post.shares)}</button>
-        <button aria-label="Save" onClick={() => toast("Saved to your collection")} className="active:scale-90"><Bookmark className="h-7 w-7" /></button>
+        <button aria-label={post.saved ? "Unsave" : "Save"} onClick={() => { onSave(); toast(post.saved ? "Removed from saved" : "Saved to your profile"); }} className="active:scale-90"><Bookmark className={`h-7 w-7 ${post.saved ? "fill-primary text-primary" : ""}`} /></button>
         <div className={`h-10 w-10 overflow-hidden rounded-full border-4 border-secondary ${active && !paused ? "animate-spin [animation-duration:4s]" : ""}`}><Avatar src={post.user.avatar} size={32} /></div>
       </div>
       <div className="absolute inset-x-0 bottom-0 h-1 bg-foreground/20"><div className="h-full bg-primary" style={{ width: `${progress}%` }} /></div>
