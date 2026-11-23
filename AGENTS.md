@@ -29,6 +29,6 @@ use the editor.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
 
-- tumeni app UI lives in src/components/tumeni and is rendered from src/routes/index.tsx with in-memory state; test login is stored in localStorage (no backend yet) so the full flow is testable instantly.
+- Persist real Tumeni accounts and social data in Lovable Cloud, with row-level access rules and private media storage, because local-only state cannot support safe cross-account sharing.
 - Installable via manifest-only (public/manifest.webmanifest); no service worker, to keep previews fresh.
 - Keep test onboarding in the welcome UI and validate its data through the shared onboarding module; store only completed profile/preferences per test identity in browser storage, never passwords, so setup carries into the frontend demo without implying real authentication.

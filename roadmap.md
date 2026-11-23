@@ -1,4 +1,8 @@
-- [x] Add instant test sign-in and profile setup.
-- [x] Add interest selection and creator/friend connections.
-- [x] Carry setup into the app and verify desktop/mobile flows.- [x] Step 2: Stories (Vibe Drops) row + full-screen player.
-- [x] Profile fixes: edit profile, real counts, Drops/Saved tabs, working save.
+- [x] Build the original test onboarding and profile setup flow.
+- [ ] Replace sample accounts and feed content with real Cloud accounts and user-created content.
+- [ ] Remove inflated profile totals and VIP card; show zero counts for new accounts.
+- [ ] Build one mixed-media feed with public, friends-only, and private posting.
+- [ ] Add real follows, friend requests, suggested people, and searchable crews/groups.
+- [ ] Persist likes, comments, saved posts, and profile edits per account.
+- [ ] Replace sample story content with real stories or an empty state.
+- [ ] Verify signup, posting, privacy, profile totals, search, and desktop/mobile layouts.
