@@ -24,8 +24,13 @@ describe("test onboarding", () => {
   });
   it("reads a completed profile but rejects corrupt stored data", () => {
     const profile = { name: "Jordan", handle: "@jordan", avatar: "/photo.jpg", bio: "Music fan", interests: ["Music & Soundtracks"], following: ["nala"], friends: ["zuri"] };
-    expect(readSetup(JSON.stringify(profile))).toEqual(profile);
+    expect(readSetup(JSON.stringify(profile))).toEqual({ ...profile, following: [], friends: [] });
     expect(readSetup('{"name":"Jordan"}')).toBeNull();
     expect(readSetup("bad data")).toBeNull();
+  });
+  it("removes old sample follows and friends while keeping other IDs", () => {
+    const profile = { name: "Jordan", handle: "@jordan", avatar: "/photo.jpg", bio: "", interests: [], following: ["nala", "real-person"], friends: ["zuri", "real-friend"] };
+    expect(readSetup(JSON.stringify(profile))?.following).toEqual(["real-person"]);
+    expect(readSetup(JSON.stringify(profile))?.friends).toEqual(["real-friend"]);
   });
 });

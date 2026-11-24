@@ -1,8 +1,7 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BadgeCheck, Check, Eye, EyeOff, Flame, Gamepad2, Laugh, Music, Camera, Trophy, UserPlus, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Flame, Gamepad2, Laugh, Music, Camera, Trophy, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LogoMark, Wordmark } from "./Logo";
-import { USERS } from "./data";
 import { INTERESTS, profileError, testIdentity, toggleSelection, type SetupProfile } from "./onboarding";
 import artist from "@/assets/artist.jpg";
 import street from "@/assets/street.jpg";
@@ -75,11 +74,11 @@ export function Auth({ onLogin, initialAccount = null }: { onLogin: (id: string,
             <div className="mt-7 flex items-center justify-between gap-4"><span className="text-sm text-muted-foreground">{profile.interests.length} selected</span><Button className="h-12 px-6" disabled={!profile.interests.length} onClick={next}>Continue <ArrowRight /></Button></div>
           </>}
           {step === 3 && <>
-            <h2 className="mb-3 text-lg font-semibold">Creators to follow</h2>
-            <div className="grid gap-3 sm:grid-cols-2">{[USERS.yung, USERS.nala, USERS.kito, USERS.haha].map((u, i) => <div key={u.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-4"><Face src={u.avatar} /><div className="min-w-0 flex-1"><p className="flex items-center gap-1 text-sm font-medium"><span className="truncate">{u.name}</span>{u.verified && <BadgeCheck aria-label="Verified creator" className="h-4 w-4 shrink-0 text-primary" />}</p><p className="truncate text-xs text-muted-foreground">{u.handle}</p><p className="mt-1 text-xs text-muted-foreground">{["48.2K", "31.6K", "12.9K", "24.8K"][i]} followers</p></div><Button variant={profile.following.includes(u.id) ? "secondary" : "default"} size="sm" aria-label={`${profile.following.includes(u.id) ? "Unfollow" : "Follow"} ${u.name}`} onClick={() => select("following", u.id)}>{profile.following.includes(u.id) ? <Check /> : <UserPlus />}{profile.following.includes(u.id) ? "Following" : "Follow"}</Button></div>)}</div>
-            <h2 className="mb-3 mt-8 text-lg font-semibold">People you may know</h2>
-            <div className="divide-y divide-border">{[USERS.zuri, USERS.dre].map((u, i) => <div key={u.id} className="flex items-center gap-3 py-4"><Face src={u.avatar} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{u.name}</p><p className="text-xs text-muted-foreground">{i === 0 ? 8 : 12} mutual friends</p></div><Button variant="outline" aria-label={`${profile.friends.includes(u.id) ? "Remove" : "Add"} ${u.name}`} onClick={() => select("friends", u.id)}>{profile.friends.includes(u.id) ? <Check /> : <UserPlus />}{profile.friends.includes(u.id) ? "Added" : "Add friend"}</Button></div>)}</div>
-            <p className="mt-3 text-xs text-muted-foreground">Suggested connections are sample profiles for testing.</p>
+            <div className="rounded-lg border border-border bg-card px-5 py-8 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-primary"><Check className="h-7 w-7" /></div>
+              <h2 className="mt-4 text-lg font-semibold">Your profile starts fresh</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">No placeholder accounts or follower counts. You can find people and crews from Explore.</p>
+            </div>
             <Button className="mt-7 h-12 w-full" onClick={() => onLogin(account, { ...profile, name: profile.name.trim(), handle: `@${profile.handle.replace(/^@/, "")}`, bio: profile.bio.trim() })}>Enter Tumeni <ArrowRight /></Button>
           </>}
           {step > 0 && <Button variant="ghost" className="mt-5 px-0 text-muted-foreground" onClick={() => { setError(""); setStep((s) => s - 1); }}><ArrowLeft />Back</Button>}
@@ -88,4 +87,3 @@ export function Auth({ onLogin, initialAccount = null }: { onLogin: (id: string,
     </div>
   );
 }
-function Face({ src }: { src: string }) { return src === "😆" ? <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary text-2xl">{src}</span> : <img src={src} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover" />; }

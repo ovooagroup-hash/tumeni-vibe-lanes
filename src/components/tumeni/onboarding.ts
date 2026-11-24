@@ -18,6 +18,13 @@ export function readSetup(raw: string | null): SetupProfile | null {
     const v = p as Record<string, unknown>;
     if (!["name", "handle", "avatar", "bio"].every((k) => typeof v[k] === "string")) return null;
     if (!["interests", "following", "friends"].every((k) => Array.isArray(v[k]) && (v[k] as unknown[]).every((i) => typeof i === "string"))) return null;
-    return p as SetupProfile;
+    const profile = p as SetupProfile;
+    const sampleCreatorIds = new Set(["yung", "haha", "nala", "kito"]);
+    const sampleFriendIds = new Set(["zuri", "dre"]);
+    return {
+      ...profile,
+      following: profile.following.filter((id) => !sampleCreatorIds.has(id)),
+      friends: profile.friends.filter((id) => !sampleFriendIds.has(id)),
+    };
   } catch { return null; }
 }
