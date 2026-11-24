@@ -16,20 +16,43 @@ describe("test onboarding", () => {
     expect(profileError("Jordan", "not a handle")).not.toBe("");
   });
   it("offers all six requested interests", () => {
-    expect([...INTERESTS]).toEqual(["Comedy & Memes", "Trending", "Music & Soundtracks", "Daily Life & Stories", "Gaming & Tech", "Sports"]);
+    expect([...INTERESTS]).toEqual([
+      "Comedy & Memes",
+      "Trending",
+      "Music & Soundtracks",
+      "Daily Life & Stories",
+      "Gaming & Tech",
+      "Sports",
+    ]);
   });
   it("adds and removes followed creators and friends", () => {
     expect(toggleSelection([], "nala")).toEqual(["nala"]);
     expect(toggleSelection(["nala"], "nala")).toEqual([]);
   });
   it("reads a completed profile but rejects corrupt stored data", () => {
-    const profile = { name: "Jordan", handle: "@jordan", avatar: "/photo.jpg", bio: "Music fan", interests: ["Music & Soundtracks"], following: ["nala"], friends: ["zuri"] };
+    const profile = {
+      name: "Jordan",
+      handle: "@jordan",
+      avatar: "/photo.jpg",
+      bio: "Music fan",
+      interests: ["Music & Soundtracks"],
+      following: ["nala"],
+      friends: ["zuri"],
+    };
     expect(readSetup(JSON.stringify(profile))).toEqual({ ...profile, following: [], friends: [] });
     expect(readSetup('{"name":"Jordan"}')).toBeNull();
     expect(readSetup("bad data")).toBeNull();
   });
   it("removes old sample follows and friends while keeping other IDs", () => {
-    const profile = { name: "Jordan", handle: "@jordan", avatar: "/photo.jpg", bio: "", interests: [], following: ["nala", "real-person"], friends: ["zuri", "real-friend"] };
+    const profile = {
+      name: "Jordan",
+      handle: "@jordan",
+      avatar: "/photo.jpg",
+      bio: "",
+      interests: [],
+      following: ["nala", "real-person"],
+      friends: ["zuri", "real-friend"],
+    };
     expect(readSetup(JSON.stringify(profile))?.following).toEqual(["real-person"]);
     expect(readSetup(JSON.stringify(profile))?.friends).toEqual(["real-friend"]);
   });
