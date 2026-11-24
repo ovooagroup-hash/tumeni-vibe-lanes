@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { Plus, X, Heart, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, X, Heart, Send, Camera, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { USERS, type User } from "./data";
 
-type Slide = { video?: string; text?: string };
+type Slide = { video?: string; image?: string; text?: string };
 type Story = { user: User; slides: Slide[] };
 
 const SEED: Story[] = [
@@ -48,10 +48,10 @@ function Ring({ user, seen, size = 60 }: { user: User; seen: boolean; size?: num
 
   return (
     <div
-      className={`rounded-full p-[2.5px] ${
+      className={`rounded-full p-[2px] ${
         seen
           ? "bg-[#222228]"
-          : "bg-gradient-to-tr from-[#FFB800] via-[#FFB800]/75 to-[#FFB800]/30 glow"
+          : "bg-gradient-to-tr from-[#FFB800]/80 via-[#FFB800]/55 to-[#FFB800]/25"
       }`}
     >
       <div
@@ -87,6 +87,8 @@ export function StoriesBar({ me }: { me: User }) {
   const [open, setOpen] = useState<number | null>(null);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
+  const storyCamRef = useRef<HTMLInputElement>(null);
+  const storyGalleryRef = useRef<HTMLInputElement>(null);
 
   const publishMine = () => {
     const trimmed = draft.trim();
@@ -98,6 +100,23 @@ export function StoriesBar({ me }: { me: User }) {
     setDraft("");
     setComposing(false);
     toast.success("Your vibe drop is live for 24h");
+  };
+
+  const publishStoryMedia = (file: File) => {
+    const isVid = file.type.startsWith("video/");
+    const isImg = file.type.startsWith("image/");
+    if (!isVid && !isImg) {
+      toast.error("Choose a photo or video for your story.");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const slide: Slide = isVid
+      ? { video: url, ...(draft.trim() ? { text: draft.trim() } : {}) }
+      : { image: url, ...(draft.trim() ? { text: draft.trim() } : {}) };
+    setStories((s) => [{ user: me, slides: [slide] }, ...s.filter((x) => x.user.id !== me.id)]);
+    setDraft("");
+    setComposing(false);
+    toast.success("Your story is live for 24h");
   };
 
   const mine = stories.find((s) => s.user.id === me.id);
@@ -177,6 +196,47 @@ export function StoriesBar({ me }: { me: User }) {
               placeholder="Drop a quick thought or studio update…"
               className="w-full resize-none rounded-2xl border border-[#222228] bg-[#0A0A0C] p-3.5 text-base text-foreground outline-none placeholder:text-muted-foreground focus:border-[#FFB800]"
             />
+            <input
+              ref={storyCamRef}
+              type="file"
+              accept="video/*,image/*"
+              capture="user"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.currentTarget.value = "";
+                if (f) publishStoryMedia(f);
+              }}
+            />
+            <input
+              ref={storyGalleryRef}
+              type="file"
+              accept="video/*,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.currentTarget.value = "";
+                if (f) publishStoryMedia(f);
+              }}
+            />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => storyCamRef.current?.click()}
+                className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-[#222228] bg-[#0A0A0C] text-xs font-semibold text-foreground transition hover:border-[#FFB800]"
+              >
+                <Camera className="h-4 w-4 text-[#FFB800]" />
+                <span>Open Camera</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => storyGalleryRef.current?.click()}
+                className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-[#222228] bg-[#0A0A0C] text-xs font-semibold text-foreground transition hover:border-[#FFB800]"
+              >
+                <ImagePlus className="h-4 w-4 text-[#FFB800]" />
+                <span>Gallery</span>
+              </button>
+            </div>
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs tabular-nums text-muted-foreground">{draft.length}/140</span>
               <button
@@ -250,6 +310,12 @@ function Viewer({
             loop
             muted
             playsInline
+            className="h-full w-full object-cover"
+          />
+        ) : slide?.image ? (
+          <img
+            src={slide.image}
+            alt={slide.text || `${story.user.name} story`}
             className="h-full w-full object-cover"
           />
         ) : (

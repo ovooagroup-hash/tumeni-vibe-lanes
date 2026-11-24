@@ -14,10 +14,8 @@ import {
   User as UserIcon,
   X,
   ArrowLeft,
-  Video,
   Image as ImageIcon,
   AudioLines,
-  MessageSquareText,
   Users,
   Music,
   Eye,
@@ -31,9 +29,10 @@ import {
   Globe,
   Lock,
   Radio,
-  Upload,
   Camera,
-  Hash,
+  ThumbsUp,
+  Smile,
+  Disc3,
 } from "lucide-react";
 import { LogoMark } from "./Logo";
 import {
@@ -42,28 +41,38 @@ import {
   PROFILES,
   GRID,
   SUGGESTED_PEOPLE,
+  FRIEND_REQUESTS,
   CREWS,
   POST_AUDIENCES,
-  LIVE_ROOM,
+  LIVE_STREAMS,
   getVisiblePosts,
   fmt,
-  getUser,
   type Audience,
+  type Comment,
   type Kind,
   type Post,
   type Chat,
-  type ChatAttachment,
   type User,
   type GridItem,
   type Crew,
-  type VoiceNote,
+  type SuggestedPerson,
 } from "./data";
 import { toggleSelection, profileError, type SetupProfile } from "./onboarding";
 import { StoriesBar } from "./Stories";
 import { Avatar, Waveform } from "./SharedUI";
 import { CircleRadarCarousel, CircleRadarHub, type RadarFilter } from "./CircleRadar";
 import { MessagesList, CrewChatRoom } from "./CrewChat";
-import { LiveMiniPlayer, LiveRoomBanner, LiveVibeRoomSheet } from "./LiveVibeRoom";
+import { LiveMiniPlayer, LiveVibeRoomSheet } from "./LiveVibeRoom";
+import { StudioCameraModal, VideoStageDecorations, type StudioLaunchMode } from "./StudioCamera";
+import {
+  loadAllAccounts,
+  loadPersistedUserPosts,
+  saveUserPosts,
+  loadAccountEngagement,
+  saveAccountEngagement,
+  toggleAccountFollow,
+  type AccountRecord,
+} from "./storage";
 
 type Tab = "home" | "explore" | "messages" | "profile";
 
@@ -79,7 +88,7 @@ function AudienceBadge({ audience = "public" }: { audience?: Audience | undefine
   );
 }
 
-function Actions({
+function FacebookActions({
   post,
   onLike,
   onComment,
@@ -92,47 +101,57 @@ function Actions({
   onShare: () => void;
   onSave: () => void;
 }) {
-  const Item = ({
-    children,
-    label,
-    onClick,
-    aria,
-  }: {
-    children: React.ReactNode;
-    label?: string;
-    onClick: () => void;
-    aria: string;
-  }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={aria}
-      className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 text-xs font-medium tabular-nums transition active:scale-90"
-    >
-      {children}
-      {label !== undefined && <span>{label}</span>}
-    </button>
-  );
   return (
-    <div className="flex flex-col items-center gap-2">
-      <Item onClick={onLike} label={fmt(post.likes)} aria="Like">
-        <Heart
-          className={`h-6 w-6 transition ${
-            post.liked ? "scale-110 fill-[#FFB800] text-[#FFB800]" : "text-[#FFB800]"
-          }`}
+    <div className="mt-3 grid grid-cols-4 gap-1 border-t border-[#222228] px-2 pt-2 sm:px-0">
+      <button
+        type="button"
+        onClick={onLike}
+        aria-label="Like"
+        className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-semibold tabular-nums transition active:scale-95 ${
+          post.liked
+            ? "bg-[#FFB800]/10 text-[#FFB800]"
+            : "text-muted-foreground hover:bg-[#0A0A0C] hover:text-foreground"
+        }`}
+      >
+        <ThumbsUp
+          className={`h-4 w-4 shrink-0 ${post.liked ? "fill-[#FFB800] text-[#FFB800]" : ""}`}
         />
-      </Item>
-      <Item onClick={onComment} label={fmt(post.comments.length)} aria="Comments">
-        <MessageCircle className="h-6 w-6" />
-      </Item>
-      <Item onClick={onShare} label={fmt(post.shares)} aria="Send in">
-        <Send className="h-6 w-6" />
-      </Item>
-      <Item onClick={onSave} aria={post.saved ? "Remove from saved" : "Save drop"}>
-        <Bookmark
-          className={`h-5 w-5 transition ${post.saved ? "fill-[#FFB800] text-[#FFB800]" : ""}`}
-        />
-      </Item>
+        <span>{fmt(post.likes)}</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onComment}
+        aria-label="Comments"
+        className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-semibold tabular-nums text-muted-foreground transition hover:bg-[#0A0A0C] hover:text-foreground active:scale-95"
+      >
+        <MessageCircle className="h-4 w-4 shrink-0" />
+        <span>{fmt(post.comments.length)}</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onShare}
+        aria-label="Share to crew"
+        className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-semibold tabular-nums text-muted-foreground transition hover:bg-[#0A0A0C] hover:text-foreground active:scale-95"
+      >
+        <Send className="h-4 w-4 shrink-0" />
+        <span>{fmt(post.shares)}</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onSave}
+        aria-label={post.saved ? "Remove from saved" : "Save drop"}
+        className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-semibold transition active:scale-95 ${
+          post.saved
+            ? "text-[#FFB800]"
+            : "text-muted-foreground hover:bg-[#0A0A0C] hover:text-foreground"
+        }`}
+      >
+        <Bookmark className={`h-4 w-4 shrink-0 ${post.saved ? "fill-[#FFB800]" : ""}`} />
+        <span>{post.saved ? "Saved" : "Save"}</span>
+      </button>
     </div>
   );
 }
@@ -155,6 +174,7 @@ function PostCard({
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const soundAudioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -168,19 +188,32 @@ function PostCard({
   }, [playing]);
 
   useEffect(() => {
+    const sa = soundAudioRef.current;
+    if (!sa) return;
+    sa.muted = muted;
+    if (playing && !muted) {
+      void sa.play().catch(() => {});
+    } else {
+      sa.pause();
+    }
+  }, [playing, muted, post.soundUrl]);
+
+  useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    v.muted = muted;
+    v.playbackRate = post.playbackSpeed ?? 1;
+    // Mute raw video track when an added artist sound supplies the soundtrack
+    v.muted = post.soundUrl || post.soundYoutubeId ? true : muted;
     if (playing) {
       void v.play().catch(() => {
         v.muted = true;
-        setMuted(true);
+        if (!post.soundUrl && !post.soundYoutubeId) setMuted(true);
         void v.play().catch(() => {});
       });
     } else {
       v.pause();
     }
-  }, [playing, muted]);
+  }, [playing, muted, post.soundUrl, post.soundYoutubeId, post.playbackSpeed]);
 
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -193,13 +226,18 @@ function PostCard({
 
   return (
     <article className="animate-rise border-b border-[#222228] bg-[#141418] py-3 sm:rounded-3xl sm:border sm:p-4">
-      <header className="flex items-center gap-3 px-4 py-2 sm:px-0">
+      <header className="flex items-center gap-3 px-4 py-1.5 sm:px-0">
         <Avatar src={post.user.avatar} name={post.user.name} handle={post.user.handle} ring />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 font-medium text-foreground">
+          <div className="flex flex-wrap items-center gap-1.5 font-medium text-foreground">
             <span className="truncate">{post.user.name}</span>
             {post.user.verified && (
               <BadgeCheck className="h-4 w-4 shrink-0 fill-[#FFB800] text-[#0A0A0C]" />
+            )}
+            {post.mood && (
+              <span className="text-xs font-normal text-muted-foreground">
+                is feeling <span className="font-medium text-[#FFB800]">{post.mood}</span>
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -220,15 +258,33 @@ function PostCard({
         </button>
       </header>
 
+      {/* Clean Caption ABOVE Media for all post formats */}
+      {post.kind !== "text" && (post.caption || post.tag) && (
+        <p className="mt-2 px-4 text-sm leading-relaxed text-foreground sm:px-0">
+          {post.caption}{" "}
+          {post.tag && <span className="font-medium text-[#FFB800]">{post.tag}</span>}
+        </p>
+      )}
+
       {post.kind === "video" && (
-        <div className="relative mt-2 overflow-hidden bg-[#0A0A0C] sm:rounded-2xl">
+        <div className="relative mt-3 overflow-hidden bg-[#0A0A0C] sm:rounded-2xl sm:border sm:border-[#222228]">
+          {post.soundUrl && <audio ref={soundAudioRef} src={post.soundUrl} loop preload="none" />}
+          {!post.soundUrl && post.soundYoutubeId && playing && !muted && (
+            <iframe
+              key={post.soundYoutubeId}
+              title={`Track ${post.track ?? "YouTube Music"}`}
+              src={`https://www.youtube-nocookie.com/embed/${post.soundYoutubeId}?autoplay=1&loop=1&playlist=${post.soundYoutubeId}&controls=0`}
+              allow="autoplay; encrypted-media"
+              className="pointer-events-none fixed -left-[9999px] h-1 w-1 opacity-0"
+            />
+          )}
           {videoSrc ? (
             <video
               ref={videoRef}
               src={videoSrc}
-              className="aspect-[4/5] w-full bg-[#0A0A0C] object-cover"
+              className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${post.filterClass ?? ""}`}
               loop
-              muted={muted}
+              muted={muted || !!post.soundUrl || !!post.soundYoutubeId}
               playsInline
               preload="metadata"
               onClick={() => setPlaying((prev) => !prev)}
@@ -238,7 +294,12 @@ function PostCard({
               Video unavailable
             </div>
           )}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0A0A0C]/90 via-transparent to-[#0A0A0C]/25" />
+          <VideoStageDecorations
+            effectId={post.effectId}
+            overlays={post.overlays}
+            stickers={post.stickers}
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0A0A0C]/85 via-transparent to-[#0A0A0C]/25" />
 
           <button
             type="button"
@@ -256,7 +317,7 @@ function PostCard({
           </button>
 
           <div className="absolute left-3 top-3 flex items-center gap-2">
-            <span className="flex items-center gap-1 rounded-full bg-[#0A0A0C]/70 px-2.5 py-1 text-xs tabular-nums backdrop-blur">
+            <span className="flex items-center gap-1 rounded-full bg-[#0A0A0C]/75 px-2.5 py-1 text-xs tabular-nums backdrop-blur">
               <Eye className="h-3.5 w-3.5 text-[#FFB800]" /> {fmt(post.views ?? 0)}
             </span>
           </div>
@@ -266,7 +327,7 @@ function PostCard({
               type="button"
               aria-label={muted ? "Unmute video" : "Mute video"}
               onClick={() => setMuted((m) => !m)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition hover:text-[#FFB800]"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0A0C]/75 text-foreground backdrop-blur transition hover:text-[#FFB800]"
             >
               {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
@@ -275,7 +336,7 @@ function PostCard({
                 type="button"
                 aria-label="Open in Reels"
                 onClick={onOpen}
-                className="flex h-9 items-center gap-1 rounded-full bg-[#0A0A0C]/70 px-3 text-xs font-medium text-foreground backdrop-blur transition hover:text-[#FFB800]"
+                className="flex h-9 items-center gap-1 rounded-full bg-[#0A0A0C]/75 px-3 text-xs font-medium text-foreground backdrop-blur transition hover:text-[#FFB800]"
               >
                 <Clapperboard className="h-3.5 w-3.5 text-[#FFB800]" />
                 <span>Reels</span>
@@ -283,145 +344,115 @@ function PostCard({
             )}
           </div>
 
-          <div className="absolute bottom-4 left-4 right-20 space-y-1.5">
-            <p className="text-sm font-medium text-foreground">{post.user.handle}</p>
-            <p className="text-sm leading-relaxed text-foreground">
-              {post.caption}{" "}
-              {post.tag && <span className="font-medium text-[#FFB800]">{post.tag}</span>}
-            </p>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-[#0A0A0C]/65 px-3 py-1.5 backdrop-blur">
               <Music className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
-              <span className="truncate">
-                {post.track ?? `Original Audio — ${post.user.handle}`}
-              </span>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <div className="flex w-max whitespace-nowrap text-xs font-medium text-foreground/95 animate-marquee">
+                  <span className="pr-8">
+                    🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
+                  </span>
+                  <span aria-hidden="true" className="pr-8">
+                    🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-[#222228] bg-[#141418] text-[#FFB800] shadow-md ${
+                playing ? "animate-spin [animation-duration:4s]" : ""
+              }`}
+            >
+              <Disc3 className="h-5 w-5" />
             </div>
           </div>
 
-          <div className="absolute bottom-4 right-2">
-            <Actions
-              post={post}
-              onLike={onLike}
-              onComment={onComment}
-              onShare={onShare}
-              onSave={onSave}
-            />
-          </div>
           {playing && (
             <div className="animate-progress absolute bottom-0 left-0 h-1 bg-[#FFB800]" />
           )}
         </div>
       )}
 
-      {post.kind === "photo" && (
-        <div className="mt-2 flex gap-3 px-4 pb-2 sm:px-0">
-          <div className="min-w-0 flex-1">
-            <p className="mb-3 text-sm leading-relaxed text-foreground">
-              {post.caption}{" "}
-              {post.tag && <span className="font-medium text-[#FFB800]">{post.tag}</span>}
-            </p>
-            {post.media && (
-              <img
-                src={post.media}
-                alt={post.caption}
-                referrerPolicy="no-referrer"
-                className="w-full rounded-2xl border border-[#222228] bg-[#0A0A0C] object-cover"
-              />
-            )}
-          </div>
-          <div className="flex items-end pb-1">
-            <Actions
-              post={post}
-              onLike={onLike}
-              onComment={onComment}
-              onShare={onShare}
-              onSave={onSave}
-            />
-          </div>
+      {post.kind === "photo" && post.media && (
+        <div className="mt-3 overflow-hidden bg-[#0A0A0C] sm:rounded-2xl sm:border sm:border-[#222228]">
+          <img
+            src={post.media}
+            alt={post.caption || "Photo drop"}
+            referrerPolicy="no-referrer"
+            className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${post.filterClass ?? ""}`}
+          />
         </div>
       )}
 
       {post.kind === "text" && (
-        <div className="mt-2 flex gap-3 px-4 pb-2 sm:px-0">
-          <div className="min-w-0 flex-1 rounded-2xl border border-[#222228] bg-[#0A0A0C] p-5">
+        <div className="mt-3 px-4 sm:px-0">
+          <div className="rounded-2xl border border-[#222228] bg-[#0A0A0C] p-5">
             <p className="text-lg font-medium leading-relaxed text-foreground">{post.caption}</p>
             {post.tag && <p className="mt-3 text-xs font-medium text-[#FFB800]">{post.tag}</p>}
-          </div>
-          <div className="flex items-end">
-            <Actions
-              post={post}
-              onLike={onLike}
-              onComment={onComment}
-              onShare={onShare}
-              onSave={onSave}
-            />
           </div>
         </div>
       )}
 
       {post.kind === "audio" && (
-        <div className="mt-2 flex gap-3 px-4 pb-2 sm:px-0">
-          <div className="min-w-0 flex-1">
-            <p className="mb-3 text-sm leading-relaxed text-foreground">
-              {post.caption}{" "}
-              {post.tag && <span className="font-medium text-[#FFB800]">{post.tag}</span>}
-            </p>
-            <div className="flex items-center gap-3 rounded-2xl border border-[#222228] bg-[#0A0A0C] p-3">
-              {post.audio && (
-                <audio
-                  ref={audioRef}
-                  src={post.audio}
-                  loop
-                  preload="none"
-                  onTimeUpdate={(e) => setElapsed(Math.floor(e.currentTarget.currentTime) % 60)}
-                />
-              )}
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#222228] bg-[#141418]">
-                <Music className="h-6 w-6 text-[#FFB800]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{post.track}</p>
-                <Waveform playing={playing} bars={24} className="mt-1.5 h-8" />
-                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                  0:{String(elapsed).padStart(2, "0")} / {post.duration ?? "0:30"}
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label={playing ? "Pause track" : "Play track"}
-                onClick={() => setPlaying(!playing)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#FFB800] text-[#0A0A0C] glow transition hover:brightness-110"
-              >
-                {playing ? (
-                  <Pause className="h-5 w-5 fill-current" />
-                ) : (
-                  <Play className="ml-0.5 h-5 w-5 fill-current" />
-                )}
-              </button>
+        <div className="mt-3 px-4 sm:px-0">
+          <div className="flex items-center gap-3 rounded-2xl border border-[#222228] bg-[#0A0A0C] p-3">
+            {post.audio && (
+              <audio
+                ref={audioRef}
+                src={post.audio}
+                loop
+                preload="none"
+                onTimeUpdate={(e) => setElapsed(Math.floor(e.currentTarget.currentTime) % 60)}
+              />
+            )}
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#222228] bg-[#141418]">
+              <Music className="h-6 w-6 text-[#FFB800]" />
             </div>
-          </div>
-          <div className="flex items-end">
-            <Actions
-              post={post}
-              onLike={onLike}
-              onComment={onComment}
-              onShare={onShare}
-              onSave={onSave}
-            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">{post.track}</p>
+              <Waveform playing={playing} bars={24} className="mt-1.5 h-8" />
+              <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                0:{String(elapsed).padStart(2, "0")} / {post.duration ?? "0:30"}
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label={playing ? "Pause track" : "Play track"}
+              onClick={() => setPlaying(!playing)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#FFB800] text-[#0A0A0C] glow transition hover:brightness-110"
+            >
+              {playing ? (
+                <Pause className="h-5 w-5 fill-current" />
+              ) : (
+                <Play className="ml-0.5 h-5 w-5 fill-current" />
+              )}
+            </button>
           </div>
         </div>
       )}
+
+      {/* Facebook-Style Bottom Action Bar */}
+      <FacebookActions
+        post={post}
+        onLike={onLike}
+        onComment={onComment}
+        onShare={onShare}
+        onSave={onSave}
+      />
     </article>
   );
 }
 
-function ComposerBox({ me, onOpenCreate }: { me: User; onOpenCreate: (kind: Kind) => void }) {
+function ComposerBox({
+  me,
+  onOpenStudio,
+  onGoLive,
+}: {
+  me: User;
+  onOpenStudio: (mode: StudioLaunchMode) => void;
+  onGoLive: () => void;
+}) {
   const firstName = me.name.split(" ")[0] || me.name;
-  const shortcuts: { kind: Kind; label: string; Icon: typeof Video }[] = [
-    { kind: "video", label: "Video", Icon: Video },
-    { kind: "photo", label: "Photo", Icon: ImageIcon },
-    { kind: "audio", label: "Track", Icon: Music },
-    { kind: "text", label: "Thought", Icon: MessageSquareText },
-  ];
 
   return (
     <section
@@ -432,24 +463,39 @@ function ComposerBox({ me, onOpenCreate }: { me: User; onOpenCreate: (kind: Kind
         <Avatar src={me.avatar} name={me.name} handle={me.handle} size={44} ring />
         <button
           type="button"
-          onClick={() => onOpenCreate("text")}
+          onClick={() => onOpenStudio("status")}
           className="min-h-[44px] flex-1 truncate rounded-full border border-[#222228] bg-[#0A0A0C] px-4 py-2.5 text-left text-sm text-muted-foreground transition hover:border-[#FFB800]/60 hover:text-foreground"
         >
           What&apos;s on your mind, {firstName}?
         </button>
       </div>
-      <div className="mt-3 grid grid-cols-4 gap-1.5 border-t border-[#222228] pt-3">
-        {shortcuts.map(({ kind, label, Icon }) => (
-          <button
-            key={kind}
-            type="button"
-            onClick={() => onOpenCreate(kind)}
-            className="flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-xs font-medium text-foreground transition hover:bg-[#0A0A0C] hover:text-[#FFB800]"
-          >
-            <Icon className="h-4 w-4 shrink-0 text-[#FFB800]" />
-            <span>{label}</span>
-          </button>
-        ))}
+      <div className="mt-3 grid grid-cols-3 gap-1.5 border-t border-[#222228] pt-3">
+        <button
+          type="button"
+          onClick={() => onOpenStudio("camera")}
+          className="flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-xs font-medium text-foreground transition hover:bg-[#0A0A0C] hover:text-[#FFB800]"
+        >
+          <Camera className="h-4 w-4 shrink-0 text-[#FFB800]" />
+          <span>Photo/Video</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onGoLive}
+          className="flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-xs font-medium text-foreground transition hover:bg-[#0A0A0C] hover:text-red-400"
+        >
+          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-500" />
+          <span>Go Live</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOpenStudio("status")}
+          className="flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-xs font-medium text-foreground transition hover:bg-[#0A0A0C] hover:text-[#FFB800]"
+        >
+          <Smile className="h-4 w-4 shrink-0 text-[#FFB800]" />
+          <span>Feeling/Status</span>
+        </button>
       </div>
     </section>
   );
@@ -494,474 +540,6 @@ function Sheet({
   );
 }
 
-const QUICK_HASHTAGS = ["#StayTuned", "#NightOut", "#BeatMaker", "#Dance", "#Comedy"];
-
-function CreatePost({
-  initialKind = "video",
-  me,
-  onClose,
-  onPublish,
-}: {
-  initialKind?: Kind;
-  me: User;
-  onClose: () => void;
-  onPublish: (p: {
-    kind: Kind;
-    audience: Audience;
-    caption: string;
-    tag?: string | undefined;
-    track?: string | undefined;
-    media?: string | undefined;
-    isVideo?: boolean | undefined;
-  }) => void;
-}) {
-  const [kind, setKind] = useState<Kind>(initialKind);
-  const [audience, setAudience] = useState<Audience>("public");
-  const [caption, setCaption] = useState("");
-  const [hashtag, setHashtag] = useState("");
-  const [audioTag, setAudioTag] = useState(`Original Audio — ${me.handle}`);
-  const [media, setMedia] = useState<string>();
-  const [fileName, setFileName] = useState<string>();
-  const [isVideo, setIsVideo] = useState(false);
-  const [isAudioFile, setIsAudioFile] = useState(false);
-  const [previewMuted, setPreviewMuted] = useState(false);
-  const [previewPaused, setPreviewPaused] = useState(false);
-  const [dragging, setDragging] = useState(false);
-
-  const fileRef = useRef<HTMLInputElement>(null);
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const v = previewVideoRef.current;
-    if (!v) return;
-    v.muted = previewMuted;
-    if (previewPaused) {
-      v.pause();
-    } else {
-      void v.play().catch(() => {});
-    }
-  }, [previewMuted, previewPaused, media]);
-
-  const kinds: { id: Kind; label: string; I: typeof Video }[] = [
-    { id: "video", label: "Video", I: Video },
-    { id: "photo", label: "Photo", I: ImageIcon },
-    { id: "audio", label: "Track", I: AudioLines },
-    { id: "text", label: "Thought", I: MessageSquareText },
-  ];
-
-  const audienceIcons: Record<Audience, typeof Globe> = {
-    public: Globe,
-    friends: Users,
-    private: Lock,
-  };
-
-  const handleSelectedFile = (f: File) => {
-    const url = URL.createObjectURL(f);
-    setFileName(f.name);
-    if (f.type.startsWith("video/")) {
-      setKind("video");
-      setMedia(url);
-      setIsVideo(true);
-      setIsAudioFile(false);
-      setPreviewPaused(false);
-      return;
-    }
-    if (f.type.startsWith("image/")) {
-      setKind("photo");
-      setMedia(url);
-      setIsVideo(false);
-      setIsAudioFile(false);
-      return;
-    }
-    if (f.type.startsWith("audio/")) {
-      setKind("audio");
-      setMedia(url);
-      setIsVideo(false);
-      setIsAudioFile(true);
-      setAudioTag(f.name.replace(/\.[^.]+$/, ""));
-      return;
-    }
-    toast.error("Unsupported file type. Choose a video, image, or audio file.");
-  };
-
-  const toggleQuickTag = (t: string) => {
-    const tokens = hashtag
-      .split(/\s+/)
-      .map((x) => x.trim())
-      .filter(Boolean);
-    if (tokens.includes(t)) {
-      setHashtag(tokens.filter((x) => x !== t).join(" "));
-    } else {
-      setHashtag([...tokens, t].join(" "));
-    }
-  };
-
-  const publish = () => {
-    if (kind === "video" && (!media || !isVideo)) {
-      toast.error("Select a video from your device first");
-      return;
-    }
-    if (kind === "photo" && (!media || isVideo || isAudioFile)) {
-      toast.error("Select a photo from your device first");
-      return;
-    }
-    if (kind === "text" && !caption.trim()) {
-      toast.error("Write a thought first");
-      return;
-    }
-    const cleanedTag = hashtag
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((t) => (t.startsWith("#") ? t : `#${t}`))
-      .join(" ");
-
-    onPublish({
-      kind,
-      audience,
-      caption:
-        caption.trim() ||
-        (kind === "audio" ? "Fresh audio drop 🎧" : kind === "video" ? "New video drop" : ""),
-      tag: cleanedTag || undefined,
-      track:
-        kind === "video" || kind === "audio"
-          ? audioTag.trim() || `Original Audio — ${me.handle}`
-          : undefined,
-      media,
-      isVideo: kind === "video" ? true : undefined,
-    });
-  };
-
-  const submitLabel =
-    kind === "video"
-      ? "Drop Video"
-      : kind === "photo"
-        ? "Drop Photo"
-        : kind === "audio"
-          ? "Drop Track"
-          : "Drop Thought";
-
-  return (
-    <div className="animate-rise fixed inset-0 z-50 flex items-end justify-center bg-[#0A0A0C]/85 backdrop-blur-md sm:items-center">
-      <div className="flex max-h-[95dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl border border-[#222228] bg-[#141418] sm:rounded-3xl">
-        {/* Clean Header */}
-        <div className="flex items-center justify-between border-b border-[#222228] px-5 py-4">
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-[#0A0A0C] hover:text-foreground"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <h2 className="text-base font-semibold text-foreground">Create Drop</h2>
-          <div className="w-10" />
-        </div>
-
-        {/* Format Tabs */}
-        <div className="grid grid-cols-4 gap-1 border-b border-[#222228] bg-[#0A0A0C] p-1.5">
-          {kinds.map(({ id, label, I }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => {
-                setKind(id);
-                if (id === "text") {
-                  setMedia(undefined);
-                  setFileName(undefined);
-                  setIsVideo(false);
-                  setIsAudioFile(false);
-                }
-              }}
-              className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl text-xs font-semibold transition ${
-                kind === id
-                  ? "bg-[#FFB800] text-[#0A0A0C]"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <I className="h-4 w-4" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Scrollable Upload + Details Body */}
-        <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          <input
-            ref={fileRef}
-            type="file"
-            hidden
-            accept={kind === "audio" ? "audio/*" : kind === "photo" ? "image/*" : "video/*"}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleSelectedFile(f);
-            }}
-          />
-
-          {kind === "video" && (
-            <div>
-              {media && isVideo ? (
-                <div className="relative mx-auto aspect-[9/16] max-h-[40dvh] overflow-hidden rounded-2xl border border-[#222228] bg-[#0A0A0C]">
-                  <video
-                    ref={previewVideoRef}
-                    src={media}
-                    autoPlay
-                    loop
-                    muted={previewMuted}
-                    playsInline
-                    onClick={() => setPreviewPaused((p) => !p)}
-                    className="h-full w-full object-cover"
-                  />
-                  <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileRef.current?.click()}
-                      className="min-h-[36px] rounded-full bg-[#0A0A0C]/75 px-3 text-xs font-medium text-foreground backdrop-blur hover:text-[#FFB800]"
-                    >
-                      Change Video
-                    </button>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        aria-label={previewPaused ? "Play preview" : "Pause preview"}
-                        onClick={() => setPreviewPaused((p) => !p)}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0A0C]/75 text-foreground backdrop-blur hover:text-[#FFB800]"
-                      >
-                        {previewPaused ? (
-                          <Play className="h-4 w-4 fill-current" />
-                        ) : (
-                          <Pause className="h-4 w-4 fill-current" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={previewMuted ? "Unmute preview" : "Mute preview"}
-                        onClick={() => setPreviewMuted((m) => !m)}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0A0C]/75 text-foreground backdrop-blur hover:text-[#FFB800]"
-                      >
-                        {previewMuted ? (
-                          <VolumeX className="h-4 w-4" />
-                        ) : (
-                          <Volume2 className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  {fileName && (
-                    <div className="pointer-events-none absolute inset-x-3 bottom-3 truncate rounded-full bg-[#0A0A0C]/75 px-3 py-1 text-center text-xs text-muted-foreground backdrop-blur">
-                      {fileName}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragging(true);
-                  }}
-                  onDragLeave={() => setDragging(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragging(false);
-                    const f = e.dataTransfer.files?.[0];
-                    if (f) handleSelectedFile(f);
-                  }}
-                  className={`flex flex-col items-center justify-center rounded-3xl border-2 border-dashed px-6 py-10 text-center transition ${
-                    dragging ? "border-[#FFB800] bg-[#FFB800]/10" : "border-[#222228] bg-[#0A0A0C]"
-                  }`}
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#222228] bg-[#141418] text-[#FFB800]">
-                    <Upload className="h-6 w-6" />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-foreground">
-                    Upload a vertical video for Feed &amp; Reels
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    MP4, MOV, or WebM from your device (9:16 recommended)
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#FFB800] px-5 text-xs font-semibold text-[#0A0A0C] transition hover:brightness-110"
-                  >
-                    <Video className="h-4 w-4" />
-                    <span>Select Video from Device</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {kind === "photo" && (
-            <div>
-              {media && !isVideo && !isAudioFile ? (
-                <div className="relative overflow-hidden rounded-2xl border border-[#222228] bg-[#0A0A0C]">
-                  <img
-                    src={media}
-                    alt="Selected photo preview"
-                    className="max-h-[38dvh] w-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="absolute right-3 top-3 min-h-[36px] rounded-full bg-[#0A0A0C]/80 px-3 text-xs font-medium text-foreground backdrop-blur hover:text-[#FFB800]"
-                  >
-                    Change Photo
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-[#222228] bg-[#0A0A0C] px-6 py-10 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#222228] bg-[#141418] text-[#FFB800]">
-                    <ImageIcon className="h-6 w-6" />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-foreground">
-                    Choose a photo from your device
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#FFB800] px-5 text-xs font-semibold text-[#0A0A0C] transition hover:brightness-110"
-                  >
-                    <Camera className="h-4 w-4" />
-                    <span>Select Photo from Device</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {kind === "audio" && (
-            <div className="space-y-3 rounded-2xl border border-[#222228] bg-[#0A0A0C] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    {fileName ? fileName : "Audio Track"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {isAudioFile && media
-                      ? "Ready to stream in feed"
-                      : "Optional: attach an MP3 / WAV from your device"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="min-h-[40px] shrink-0 rounded-full border border-[#222228] bg-[#141418] px-4 text-xs font-semibold text-[#FFB800] hover:border-[#FFB800]"
-                >
-                  {isAudioFile ? "Change File" : "Select Audio"}
-                </button>
-              </div>
-              <Waveform playing bars={38} className="h-10 justify-center" />
-              {isAudioFile && media && <audio src={media} controls className="w-full" />}
-            </div>
-          )}
-
-          {/* Caption */}
-          <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              {kind === "text" ? "Thought" : "Caption"}
-            </span>
-            <textarea
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              rows={kind === "text" ? 4 : 2}
-              maxLength={280}
-              placeholder={
-                kind === "text" ? "What's on your mind?" : "Write a caption for your circle…"
-              }
-              className="w-full resize-none rounded-2xl border border-[#222228] bg-[#0A0A0C] p-3.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-[#FFB800]"
-            />
-          </label>
-
-          {/* Hashtags */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 rounded-2xl border border-[#222228] bg-[#0A0A0C] px-3.5 focus-within:border-[#FFB800]">
-              <Hash className="h-4 w-4 shrink-0 text-[#FFB800]" />
-              <input
-                value={hashtag}
-                onChange={(e) => setHashtag(e.target.value)}
-                placeholder="Add tags (e.g. #NightOut #Afrohouse)"
-                className="min-h-[44px] w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-              />
-            </label>
-            <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
-              {QUICK_HASHTAGS.map((t) => {
-                const active = hashtag.split(/\s+/).includes(t);
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => toggleQuickTag(t)}
-                    className={`min-h-[32px] shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition ${
-                      active
-                        ? "border-[#FFB800] bg-[#FFB800]/15 text-[#FFB800]"
-                        : "border-[#222228] bg-[#0A0A0C] text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Optional Audio Tag for Video / Track */}
-          {(kind === "video" || kind === "audio") && (
-            <label className="flex items-center gap-2 rounded-2xl border border-[#222228] bg-[#0A0A0C] px-3.5 focus-within:border-[#FFB800]">
-              <Music className="h-4 w-4 shrink-0 text-[#FFB800]" />
-              <input
-                value={audioTag}
-                onChange={(e) => setAudioTag(e.target.value)}
-                placeholder={`Original Audio — ${me.handle}`}
-                className="min-h-[44px] w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-              />
-            </label>
-          )}
-
-          {/* Audience / Privacy Selector */}
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Audience</p>
-            <div className="grid grid-cols-3 gap-2">
-              {POST_AUDIENCES.map((opt) => {
-                const Icon = audienceIcons[opt.id];
-                const active = audience === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setAudience(opt.id)}
-                    className={`flex min-h-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-2 text-xs font-medium transition ${
-                      active
-                        ? "border-[#FFB800] bg-[#FFB800]/15 text-[#FFB800]"
-                        : "border-[#222228] bg-[#0A0A0C] text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Sticky Footer Submit */}
-        <div className="border-t border-[#222228] bg-[#141418] p-4 pb-6">
-          <button
-            type="button"
-            onClick={publish}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#FFB800] text-sm font-bold text-[#0A0A0C] glow transition hover:brightness-110 active:scale-[0.98]"
-          >
-            <Clapperboard className="h-4 w-4" />
-            <span>{submitLabel}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function TumeniApp({
   account,
   setup,
@@ -974,28 +552,30 @@ export function TumeniApp({
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("home");
-  const [radarFilter, setRadarFilter] = useState<RadarFilter>("suggested");
+  const [radarFilter, setRadarFilter] = useState<RadarFilter>("suggestions");
   const [posts, setPosts] = useState<Post[]>(SEED_POSTS);
   const [chats, setChats] = useState<Chat[]>(SEED_CHATS);
   const [openChat, setOpenChat] = useState<string | null>(null);
   const [shareFor, setShareFor] = useState<Post | null>(null);
   const [commentsFor, setCommentsFor] = useState<string | null>(null);
-  const [creatingKind, setCreatingKind] = useState<Kind | null>(null);
+  const [studioLaunch, setStudioLaunch] = useState<StudioLaunchMode | null>(null);
   const [profileIdx, setProfileIdx] = useState(0);
   const [switcher, setSwitcher] = useState(false);
   const [notif, setNotif] = useState(true);
   const [reelAt, setReelAt] = useState<string | null>(null);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+  const [requests, setRequests] = useState<SuggestedPerson[]>(FRIEND_REQUESTS);
   const [joinedCrews, setJoinedCrews] = useState<string[]>([]);
+
+  // Persisted posts & account registry hydration
+  const [postsHydrated, setPostsHydrated] = useState(false);
+  const [accountsList, setAccountsList] = useState<AccountRecord[]>(() => loadAllAccounts());
 
   // Live Vibe Room state
   const [liveJoined, setLiveJoined] = useState(false);
   const [liveOpen, setLiveOpen] = useState(false);
+  const [liveIsBroadcast, setLiveIsBroadcast] = useState(false);
   const [liveStreamMuted, setLiveStreamMuted] = useState(false);
-  const [liveMicMuted, setLiveMicMuted] = useState(true);
-  const [liveHandRaised, setLiveHandRaised] = useState(false);
-  const [liveOnStage, setLiveOnStage] = useState(false);
-  const liveAudioRef = useRef<HTMLAudioElement>(null);
 
   const reelPosts = posts.filter((p) => p.kind === "video" || p.video || p.mediaIsVideo);
 
@@ -1004,29 +584,96 @@ export function TumeniApp({
   }, [tab, openChat]);
 
   useEffect(() => {
-    const audio = liveAudioRef.current;
-    if (!audio) return;
-    audio.muted = liveStreamMuted;
-    if (liveJoined && !liveStreamMuted) {
-      void audio.play().catch(() => {});
-    } else {
-      audio.pause();
-    }
-  }, [liveJoined, liveStreamMuted]);
+    setAccountsList(loadAllAccounts());
+  }, [account, setup]);
 
-  const myUser: User = { id: "me", name: setup.name, handle: setup.handle, avatar: setup.avatar };
+  useEffect(() => {
+    let cancelled = false;
+    setPostsHydrated(false);
+    const hydrate = async () => {
+      const persistedUserPosts = await loadPersistedUserPosts();
+      if (cancelled) return;
+      const engagement = loadAccountEngagement(account);
+      const likedSet = new Set(engagement.likedIds);
+      const savedSet = new Set(engagement.savedIds);
+
+      const hydratePost = (p: Post, isSeed: boolean): Post => {
+        const isLiked = likedSet.has(p.id);
+        const isSaved = savedSet.has(p.id);
+        const extraComments = engagement.commentsByPostId[p.id] ?? [];
+        const existingIds = new Set(p.comments.map((c) => c.id));
+        const mergedComments = [
+          ...p.comments,
+          ...extraComments.filter((c) => !existingIds.has(c.id)),
+        ];
+        const shareBoost = isSeed ? (engagement.shareCounts[p.id] ?? 0) : 0;
+        return {
+          ...p,
+          liked: isLiked,
+          saved: isSaved,
+          likes: isSeed ? p.likes + (isLiked ? 1 : 0) : p.likes,
+          shares: p.shares + shareBoost,
+          comments: mergedComments,
+        };
+      };
+
+      const merged: Post[] = [
+        ...persistedUserPosts.map((p) => hydratePost(p, false)),
+        ...SEED_POSTS.map((p) => hydratePost(p, true)),
+      ];
+      setPosts(merged);
+      setPostsHydrated(true);
+    };
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [account]);
+
+  useEffect(() => {
+    if (!postsHydrated) return;
+    saveUserPosts(posts);
+  }, [posts, postsHydrated]);
+
+  const persistAccountEngagementFromPosts = (nextPosts: Post[]) => {
+    const likedIds = nextPosts.filter((p) => p.liked).map((p) => p.id);
+    const savedIds = nextPosts.filter((p) => p.saved).map((p) => p.id);
+    const commentsByPostId: Record<string, Comment[]> = {};
+    const shareCounts: Record<string, number> = {};
+
+    for (const p of nextPosts) {
+      const seed = SEED_POSTS.find((s) => s.id === p.id);
+      if (seed) {
+        const seedIds = new Set(seed.comments.map((c) => c.id));
+        const added = p.comments.filter((c) => !seedIds.has(c.id));
+        if (added.length > 0) commentsByPostId[p.id] = added;
+        const shareDelta = p.shares - seed.shares;
+        if (shareDelta > 0) shareCounts[p.id] = shareDelta;
+      } else {
+        if (p.comments.length > 0) commentsByPostId[p.id] = p.comments;
+      }
+    }
+    saveAccountEngagement(account, { likedIds, savedIds, commentsByPostId, shareCounts });
+  };
+
+  const myUser: User = {
+    id: account,
+    name: setup.name,
+    handle: setup.handle,
+    avatar: setup.avatar,
+  };
   const profiles: User[] = [myUser, ...PROFILES];
   const profile = profiles[profileIdx] ?? myUser;
   const isMe = profileIdx === 0;
   const me: User = {
-    id: isMe ? "me" : profile.id,
+    id: isMe ? account : profile.id,
     name: profile.name,
     handle: profile.handle,
     avatar: profile.avatar,
   };
 
   const tappedIds = setup.friends;
-  const liveListenerCount = LIVE_ROOM.baseListeners + (liveJoined ? 1 : 0);
+  const liveListenerCount = (LIVE_STREAMS[0]?.viewers ?? 1420) + (liveJoined ? 1 : 0);
 
   const openReels = (startId?: string) => {
     const firstId = startId ?? reelPosts[0]?.id;
@@ -1038,6 +685,7 @@ export function TumeniApp({
   };
 
   const handleTapIn = (id: string, name: string) => {
+    if (id === account) return;
     const alreadyTapped = setup.friends.includes(id);
     onSetupChange({
       ...setup,
@@ -1048,7 +696,28 @@ export function TumeniApp({
           ? setup.following
           : [...setup.following, id],
     });
-    toast.success(alreadyTapped ? `Removed ${name} from your circle` : `Tapped in with ${name} ✓`);
+    if (accountsList.some((r) => r.accountId === id)) {
+      setAccountsList(toggleAccountFollow(account, id));
+    }
+    toast.success(alreadyTapped ? `Removed ${name} from friends` : `Friend Added: ${name} ✓`);
+  };
+
+  const handleConfirmRequest = (person: SuggestedPerson) => {
+    const { id, name } = person.user;
+    if (!setup.friends.includes(id)) {
+      onSetupChange({
+        ...setup,
+        friends: [...setup.friends, id],
+        following: setup.following.includes(id) ? setup.following : [...setup.following, id],
+      });
+    }
+    setRequests((prev) => prev.filter((r) => r.user.id !== id));
+    toast.success(`You and ${name} are now friends ✓`);
+  };
+
+  const handleDismissRequest = (id: string) => {
+    setRequests((prev) => prev.filter((r) => r.user.id !== id));
+    toast("Friend request removed");
   };
 
   const openDmForUser = (user: User) => {
@@ -1076,52 +745,73 @@ export function TumeniApp({
   };
 
   const handleJoinLiveRoom = () => {
+    setLiveIsBroadcast(false);
     setLiveJoined(true);
     setLiveOpen(true);
     setLiveStreamMuted(false);
   };
 
+  const handleStartBroadcast = () => {
+    setLiveIsBroadcast(true);
+    setLiveJoined(true);
+    setLiveOpen(true);
+    setLiveStreamMuted(false);
+    toast.success("You're LIVE now 🔴");
+  };
+
   const handleLeaveLiveRoom = () => {
+    const wasBroadcast = liveIsBroadcast;
     setLiveJoined(false);
     setLiveOpen(false);
-    setLiveMicMuted(true);
-    setLiveHandRaised(false);
-    setLiveOnStage(false);
-    toast("Left Midnight Beat Lab");
+    setLiveIsBroadcast(false);
+    toast(wasBroadcast ? "Ended your live stream" : "Left live stream");
   };
 
-  const handleToggleHand = () => {
-    if (liveOnStage) {
-      setLiveOnStage(false);
-      setLiveHandRaised(false);
-      setLiveMicMuted(true);
-      toast("Stepped back to Listeners");
-      return;
-    }
-    const next = !liveHandRaised;
-    setLiveHandRaised(next);
-    if (next) {
-      toast.success("Hand raised — @kitobeats invited you to stage");
-      setTimeout(() => {
-        setLiveOnStage(true);
-        setLiveHandRaised(false);
-      }, 900);
-    }
-  };
+  const registeredPeople: SuggestedPerson[] = accountsList.map((rec) => {
+    const firstInterest = rec.profile.interests[0]?.replace(/[^a-zA-Z0-9]/g, "") || "Creator";
+    return {
+      user: {
+        id: rec.accountId,
+        name: rec.profile.name,
+        handle: rec.profile.handle,
+        avatar: rec.profile.avatar,
+      },
+      bio: rec.profile.bio || "Creator on tumeni.",
+      vibeTag: `#${firstInterest}`,
+      mutuals: 0,
+      followers: rec.followers.length,
+      nearYou: true,
+      sharedWith: [],
+    };
+  });
 
   const visibleSuggestions = SUGGESTED_PEOPLE.filter((p) => !dismissedIds.includes(p.user.id));
+  const seenPersonIds = new Set<string>();
+  const allPeople: SuggestedPerson[] = [
+    ...registeredPeople,
+    ...SUGGESTED_PEOPLE,
+    ...FRIEND_REQUESTS,
+  ].filter((p) => {
+    if (seenPersonIds.has(p.user.id)) return false;
+    seenPersonIds.add(p.user.id);
+    return true;
+  });
 
-  const feed = getVisiblePosts(posts, "me", setup.friends);
-  const publicPosts = posts.filter((p) => !p.audience || p.audience === "public");
-  const myPosts = posts.filter((p) => p.user.id === "me");
+  const feed = getVisiblePosts(posts, account, setup.friends);
+  const myPosts = posts.filter(
+    (p) => p.authorAccountId === account || p.user.id === account || p.user.id === "me",
+  );
   const activeProfilePosts = isMe ? myPosts : posts.filter((p) => p.user.id === me.id);
+  const myFollowersCount = accountsList.find((r) => r.accountId === account)?.followers.length ?? 0;
 
   const like = (id: string) =>
-    setPosts((ps) =>
-      ps.map((p) =>
+    setPosts((ps) => {
+      const next = ps.map((p) =>
         p.id === id ? { ...p, liked: !p.liked, likes: p.likes + (p.liked ? -1 : 1) } : p,
-      ),
-    );
+      );
+      persistAccountEngagementFromPosts(next);
+      return next;
+    });
 
   const sendTo = (chatId: string, post: Post) => {
     setChats((cs) =>
@@ -1137,13 +827,21 @@ export function TumeniApp({
           : c,
       ),
     );
-    setPosts((ps) => ps.map((p) => (p.id === post.id ? { ...p, shares: p.shares + 1 } : p)));
+    setPosts((ps) => {
+      const next = ps.map((p) => (p.id === post.id ? { ...p, shares: p.shares + 1 } : p));
+      persistAccountEngagementFromPosts(next);
+      return next;
+    });
     toast.success(`Sent into ${chats.find((c) => c.id === chatId)?.name}`);
   };
 
   const save = (id: string) => {
     const target = posts.find((p) => p.id === id);
-    setPosts((ps) => ps.map((p) => (p.id === id ? { ...p, saved: !p.saved } : p)));
+    setPosts((ps) => {
+      const next = ps.map((p) => (p.id === id ? { ...p, saved: !p.saved } : p));
+      persistAccountEngagementFromPosts(next);
+      return next;
+    });
     if (target) {
       toast(target.saved ? "Removed from saved" : "Saved to your profile");
     }
@@ -1163,8 +861,6 @@ export function TumeniApp({
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-7xl justify-center gap-8 bg-[#0A0A0C] text-foreground lg:px-6">
-      <audio ref={liveAudioRef} src={LIVE_ROOM.streamUrl} loop preload="none" />
-
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-2 border-r border-[#222228] py-6 pr-4 lg:flex">
         <div className="mb-6 flex items-center gap-2 px-3">
@@ -1176,7 +872,7 @@ export function TumeniApp({
         {(
           [
             ["home", Home, "Home"],
-            ["explore", Radio, "Radar"],
+            ["explore", Users, "Friends"],
             ["messages", MessageCircle, "Crew Chat"],
             ["profile", UserIcon, "Profile"],
           ] as const
@@ -1207,19 +903,14 @@ export function TumeniApp({
         <button
           type="button"
           onClick={handleJoinLiveRoom}
-          className="flex min-h-[44px] items-center justify-between rounded-2xl px-3 py-3 text-base text-foreground transition hover:bg-[#141418]"
+          className="flex min-h-[44px] items-center gap-4 rounded-2xl px-3 py-3 text-base text-foreground transition hover:bg-[#141418]"
         >
-          <span className="flex items-center gap-4">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-            <span>Live Room</span>
-          </span>
-          <span className="text-xs font-semibold tabular-nums text-[#FFB800]">
-            {liveListenerCount}
-          </span>
+          <Radio className="h-5 w-5 text-red-400" />
+          <span>LIVE</span>
         </button>
         <button
           type="button"
-          onClick={() => setCreatingKind("video")}
+          onClick={() => setStudioLaunch("camera")}
           className="mt-4 flex h-12 items-center justify-center gap-2 rounded-full bg-[#FFB800] font-semibold text-[#0A0A0C] glow transition hover:brightness-110"
         >
           <Plus className="h-5 w-5" />
@@ -1253,7 +944,16 @@ export function TumeniApp({
                   tumeni<span className="text-[#FFB800]">.</span>
                 </span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="Join LIVE rooms"
+                  onClick={handleJoinLiveRoom}
+                  className="flex min-h-[36px] items-center gap-1.5 rounded-full border border-red-500/45 bg-red-500/15 px-3 text-xs font-bold text-foreground transition hover:border-red-400 hover:bg-red-500/25"
+                >
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                  <span>LIVE</span>
+                </button>
                 <button
                   type="button"
                   aria-label="Watch reels"
@@ -1279,17 +979,15 @@ export function TumeniApp({
               </div>
             </header>
 
-            <LiveRoomBanner
-              joined={liveJoined}
-              listenerCount={liveListenerCount}
-              onOpen={handleJoinLiveRoom}
-            />
-
             <div className="border-b border-[#222228] bg-[#141418] sm:mx-4 sm:mt-4 sm:rounded-3xl sm:border">
               <StoriesBar me={myUser} />
             </div>
 
-            <ComposerBox me={myUser} onOpenCreate={(k) => setCreatingKind(k)} />
+            <ComposerBox
+              me={myUser}
+              onOpenStudio={(mode) => setStudioLaunch(mode)}
+              onGoLive={handleStartBroadcast}
+            />
 
             <div className="sm:space-y-4 sm:px-4 sm:pt-4">
               {feed.map((p, idx) => (
@@ -1307,10 +1005,9 @@ export function TumeniApp({
                       suggestions={visibleSuggestions}
                       tappedIds={tappedIds}
                       onTapIn={handleTapIn}
-                      onSendDm={openDmForUser}
                       onDismiss={(id) => setDismissedIds((prev) => [...prev, id])}
                       onSeeAll={() => {
-                        setRadarFilter("suggested");
+                        setRadarFilter("suggestions");
                         setTab("explore");
                       }}
                     />
@@ -1322,10 +1019,9 @@ export function TumeniApp({
                   suggestions={visibleSuggestions}
                   tappedIds={tappedIds}
                   onTapIn={handleTapIn}
-                  onSendDm={openDmForUser}
                   onDismiss={(id) => setDismissedIds((prev) => [...prev, id])}
                   onSeeAll={() => {
-                    setRadarFilter("suggested");
+                    setRadarFilter("suggestions");
                     setTab("explore");
                   }}
                 />
@@ -1345,17 +1041,26 @@ export function TumeniApp({
           <CircleRadarHub
             activeFilter={radarFilter}
             setActiveFilter={setRadarFilter}
-            posts={publicPosts}
+            suggestions={visibleSuggestions}
+            requests={requests}
+            allPeople={allPeople}
+            currentAccountId={account}
             tappedIds={tappedIds}
             joinedCrews={joinedCrews}
-            onTapIn={handleTapIn}
+            onAddFriend={handleTapIn}
+            onConfirmRequest={handleConfirmRequest}
+            onDismissSuggestion={(id) => setDismissedIds((prev) => [...prev, id])}
+            onDismissRequest={handleDismissRequest}
             onSendDm={openDmForUser}
             onJoinCrew={handleJoinCrew}
             onOpenCrewChat={() => {
               setTab("messages");
               setOpenChat("crew");
             }}
-            onOpenPost={handleOpenEmbeddedPost}
+            onOpenMyProfile={() => {
+              setProfileIdx(0);
+              setTab("profile");
+            }}
           />
         )}
 
@@ -1456,13 +1161,32 @@ export function TumeniApp({
             myPosts={activeProfilePosts}
             saved={posts.filter((p) => p.saved)}
             followersCount={
-              isMe ? 0 : (SUGGESTED_PEOPLE.find((p) => p.user.id === me.id)?.followers ?? 0)
+              isMe
+                ? myFollowersCount
+                : (SUGGESTED_PEOPLE.find((p) => p.user.id === me.id)?.followers ?? 0)
             }
             followingCount={isMe ? setup.following.length : 0}
             editable={isMe}
-            onEdit={(v) => onSetupChange({ ...setup, ...v })}
+            onEdit={(v) => {
+              onSetupChange({ ...setup, ...v });
+              setPosts((ps) =>
+                ps.map((p) =>
+                  p.authorAccountId === account || p.user.id === account
+                    ? {
+                        ...p,
+                        user: {
+                          ...p.user,
+                          name: v.name,
+                          handle: v.handle,
+                          avatar: v.avatar,
+                        },
+                      }
+                    : p,
+                ),
+              );
+            }}
             onOpen={(id) => openReels(id)}
-            onCreateDrop={() => setCreatingKind("video")}
+            onCreateDrop={() => setStudioLaunch("camera")}
             onSwitch={() => setSwitcher(true)}
             onLogout={onLogout}
           />
@@ -1474,7 +1198,7 @@ export function TumeniApp({
             {(
               [
                 ["home", Home, "Home"],
-                ["explore", Radio, "Radar"],
+                ["explore", Users, "Friends"],
               ] as const
             ).map(([t, I, label]) => (
               <NavBtn key={t} active={tab === t} onClick={() => setTab(t)} label={label}>
@@ -1484,7 +1208,7 @@ export function TumeniApp({
             <button
               type="button"
               aria-label="Create drop"
-              onClick={() => setCreatingKind("video")}
+              onClick={() => setStudioLaunch("camera")}
               className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#FFB800] bg-[#0A0A0C] text-[#FFB800] glow transition active:scale-90"
             >
               <Plus className="h-6 w-6" />
@@ -1515,11 +1239,11 @@ export function TumeniApp({
       <aside className="sticky top-0 hidden h-dvh w-80 shrink-0 space-y-5 py-6 xl:block">
         <div className="rounded-3xl border border-[#222228] bg-[#141418] p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-semibold text-foreground">Circle Radar</h3>
+            <h3 className="font-semibold text-foreground">People you may know</h3>
             <button
               type="button"
               onClick={() => {
-                setRadarFilter("suggested");
+                setRadarFilter("suggestions");
                 setTab("explore");
               }}
               className="text-xs font-medium text-[#FFB800] hover:underline"
@@ -1546,7 +1270,7 @@ export function TumeniApp({
             <button
               type="button"
               onClick={() => {
-                setRadarFilter("crews");
+                setRadarFilter("suggestions");
                 setTab("explore");
               }}
               className="text-xs font-medium text-[#FFB800] hover:underline"
@@ -1577,7 +1301,7 @@ export function TumeniApp({
                         : "bg-[#FFB800] text-[#0A0A0C] hover:brightness-110"
                     }`}
                   >
-                    {joined ? "Tapped In" : "Tap In"}
+                    {joined ? "Joined ✓" : "Join"}
                   </button>
                 </div>
               );
@@ -1590,7 +1314,10 @@ export function TumeniApp({
         <Reels
           posts={reelPosts.length > 0 ? reelPosts : posts}
           startId={reelAt}
+          liveListenerCount={liveListenerCount}
           onClose={() => setReelAt(null)}
+          onOpenLive={handleJoinLiveRoom}
+          onGoLive={handleStartBroadcast}
           onLike={like}
           onComment={setCommentsFor}
           onShare={setShareFor}
@@ -1601,20 +1328,11 @@ export function TumeniApp({
       {liveJoined && liveOpen && (
         <LiveVibeRoomSheet
           me={myUser}
-          listenerCount={liveListenerCount}
+          isHostBroadcast={liveIsBroadcast}
+          followingIds={setup.following}
+          onToggleFollowHost={(host) => handleTapIn(host.id, host.name)}
           streamMuted={liveStreamMuted}
-          micMuted={liveMicMuted}
-          handRaised={liveHandRaised}
-          onStage={liveOnStage}
           onToggleStreamMute={() => setLiveStreamMuted((m) => !m)}
-          onToggleMic={() => {
-            if (!liveOnStage) {
-              toast("Raise your hand first to step onto the Speaker Stage");
-              return;
-            }
-            setLiveMicMuted((m) => !m);
-          }}
-          onToggleHand={handleToggleHand}
           onMinimize={() => setLiveOpen(false)}
           onLeave={handleLeaveLiveRoom}
         />
@@ -1622,6 +1340,10 @@ export function TumeniApp({
 
       {liveJoined && !liveOpen && (
         <LiveMiniPlayer
+          roomTitle={liveIsBroadcast ? `${myUser.name}'s Live Room` : undefined}
+          hostHandle={liveIsBroadcast ? myUser.handle : undefined}
+          hostAvatar={liveIsBroadcast ? myUser.avatar : undefined}
+          hostName={liveIsBroadcast ? myUser.name : undefined}
           listenerCount={liveListenerCount}
           streamMuted={liveStreamMuted}
           onToggleMute={() => setLiveStreamMuted((m) => !m)}
@@ -1654,16 +1376,18 @@ export function TumeniApp({
             post={commentPost}
             me={me}
             onAdd={(text) =>
-              setPosts((ps) =>
-                ps.map((p) =>
+              setPosts((ps) => {
+                const next = ps.map((p) =>
                   p.id === commentPost.id
                     ? {
                         ...p,
                         comments: [...p.comments, { id: crypto.randomUUID(), user: me, text }],
                       }
                     : p,
-                ),
-              )
+                );
+                persistAccountEngagementFromPosts(next);
+                return next;
+              })
             }
           />
         )}
@@ -1693,15 +1417,33 @@ export function TumeniApp({
         </div>
       </Sheet>
 
-      {creatingKind !== null && (
-        <CreatePost
-          initialKind={creatingKind}
+      {studioLaunch !== null && (
+        <StudioCameraModal
+          launchMode={studioLaunch}
           me={myUser}
-          onClose={() => setCreatingKind(null)}
-          onPublish={({ kind, audience, caption, tag, track, media, isVideo }) => {
+          onClose={() => setStudioLaunch(null)}
+          onPublish={({
+            kind,
+            audience,
+            caption,
+            tag,
+            track,
+            soundUrl,
+            soundYoutubeId,
+            media,
+            mediaStorageKey,
+            isVideo,
+            filterClass,
+            effectId,
+            playbackSpeed,
+            overlays,
+            stickers,
+            mood,
+          }) => {
             const post: Post = {
               id: crypto.randomUUID(),
               user: myUser,
+              authorAccountId: account,
               lane: "circle",
               kind,
               audience,
@@ -1712,16 +1454,25 @@ export function TumeniApp({
               shares: 0,
               comments: [],
               media: kind === "text" || kind === "audio" ? undefined : media,
+              mediaStorageKey,
               video: kind === "video" ? media : undefined,
               audio: kind === "audio" ? media : undefined,
+              soundUrl,
+              soundYoutubeId,
               mediaIsVideo: isVideo,
               views: kind === "video" ? 1 : undefined,
               track: track ?? (kind === "audio" ? `${setup.name} — new sound` : undefined),
               duration: kind === "audio" ? "0:30" : undefined,
+              filterClass,
+              effectId,
+              playbackSpeed,
+              overlays,
+              stickers,
+              mood,
             };
             setPosts((ps) => [post, ...ps]);
             setTab("home");
-            setCreatingKind(null);
+            setStudioLaunch(null);
             window.scrollTo({ top: 0 });
             const audienceLabel = POST_AUDIENCES.find((a) => a.id === audience)?.label ?? "Public";
             toast.success(
@@ -2309,7 +2060,10 @@ function EditProfile({
 function Reels({
   posts,
   startId,
+  liveListenerCount,
   onClose,
+  onOpenLive,
+  onGoLive,
   onLike,
   onComment,
   onShare,
@@ -2317,7 +2071,10 @@ function Reels({
 }: {
   posts: Post[];
   startId: string;
+  liveListenerCount: number;
   onClose: () => void;
+  onOpenLive: () => void;
+  onGoLive: () => void;
   onLike: (id: string) => void;
   onComment: (id: string) => void;
   onShare: (p: Post) => void;
@@ -2364,26 +2121,48 @@ function Reels({
           />
         ))}
       </div>
-      <div className="pointer-events-none fixed inset-x-0 top-0 mx-auto flex max-w-xl items-center justify-between p-4">
-        <button
-          type="button"
-          aria-label="Close reels"
-          onClick={onClose}
-          className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/65 backdrop-blur"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <span className="font-bold">
-          Reels<span className="text-[#FFB800]">.</span>
-        </span>
-        <button
-          type="button"
-          aria-label={muted ? "Unmute" : "Mute"}
-          onClick={() => setMuted(!muted)}
-          className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/65 backdrop-blur"
-        >
-          {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-        </button>
+      <div className="pointer-events-none fixed inset-x-0 top-0 mx-auto flex max-w-xl items-center justify-between gap-2 p-4">
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Close reels"
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition hover:text-[#FFB800]"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onOpenLive}
+            aria-label={`Open live room (${liveListenerCount} listening)`}
+            className="flex min-h-[38px] items-center gap-2 rounded-full border border-red-500/60 bg-[#0A0A0C]/80 px-3 text-xs font-bold text-foreground shadow-[0_0_16px_rgba(239,68,68,0.45)] backdrop-blur transition hover:border-red-400"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+            </span>
+            <span className="tabular-nums">LIVE ({liveListenerCount})</span>
+          </button>
+        </div>
+
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onGoLive}
+            className="flex min-h-[38px] items-center gap-1.5 rounded-full bg-[#FFB800] px-3.5 text-xs font-bold text-[#0A0A0C] shadow-[0_0_14px_rgba(255,184,0,0.4)] transition hover:brightness-110 active:scale-95"
+          >
+            <Radio className="h-3.5 w-3.5" />
+            <span>Go LIVE</span>
+          </button>
+          <button
+            type="button"
+            aria-label={muted ? "Unmute" : "Mute"}
+            onClick={() => setMuted(!muted)}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition hover:text-[#FFB800]"
+          >
+            {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2407,13 +2186,17 @@ function Reel({
   onSave: () => void;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const soundAudioRef = useRef<HTMLAudioElement>(null);
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [burst, setBurst] = useState(0);
   const lastTap = useRef(0);
+
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
+    v.playbackRate = post.playbackSpeed ?? 1;
+    v.muted = muted || !!post.soundUrl || !!post.soundYoutubeId;
     if (active && !paused) {
       void v.play().catch(() => {
         v.muted = true;
@@ -2426,7 +2209,21 @@ function Reel({
       v.currentTime = 0;
       setPaused(false);
     }
-  }, [active, paused]);
+  }, [active, paused, muted, post.soundUrl, post.soundYoutubeId, post.playbackSpeed]);
+
+  useEffect(() => {
+    const sa = soundAudioRef.current;
+    if (!sa) return;
+    sa.muted = muted;
+    if (active && !paused && !muted) {
+      void sa.play().catch(() => {});
+    } else {
+      sa.pause();
+    }
+    if (!active) {
+      sa.currentTime = 0;
+    }
+  }, [active, paused, muted, post.soundUrl]);
 
   const tap = () => {
     const now = Date.now();
@@ -2447,11 +2244,21 @@ function Reel({
       data-id={post.id}
       className="relative h-dvh w-full snap-start snap-always overflow-hidden bg-[#0A0A0C]"
     >
+      {post.soundUrl && <audio ref={soundAudioRef} src={post.soundUrl} loop preload="none" />}
+      {!post.soundUrl && post.soundYoutubeId && active && !paused && !muted && (
+        <iframe
+          key={post.soundYoutubeId}
+          title={`Reel Track ${post.track ?? "YouTube Music"}`}
+          src={`https://www.youtube-nocookie.com/embed/${post.soundYoutubeId}?autoplay=1&loop=1&playlist=${post.soundYoutubeId}&controls=0`}
+          allow="autoplay; encrypted-media"
+          className="pointer-events-none fixed -left-[9999px] h-1 w-1 opacity-0"
+        />
+      )}
       {post.mediaIsVideo || post.video ? (
         <video
           ref={ref}
           src={post.video ?? post.media}
-          muted={muted}
+          muted={muted || !!post.soundUrl || !!post.soundYoutubeId}
           loop
           playsInline
           preload="metadata"
@@ -2459,7 +2266,7 @@ function Reel({
           onTimeUpdate={(e) =>
             setProgress((e.currentTarget.currentTime / (e.currentTarget.duration || 1)) * 100)
           }
-          className="h-full w-full object-cover"
+          className={`h-full w-full object-cover ${post.filterClass ?? ""}`}
         />
       ) : post.media ? (
         <img
@@ -2467,7 +2274,7 @@ function Reel({
           alt={post.caption}
           onClick={tap}
           referrerPolicy="no-referrer"
-          className="h-full w-full object-cover"
+          className={`h-full w-full object-cover ${post.filterClass ?? ""}`}
         />
       ) : (
         <div
@@ -2477,6 +2284,11 @@ function Reel({
           {post.caption}
         </div>
       )}
+      <VideoStageDecorations
+        effectId={post.effectId}
+        overlays={post.overlays}
+        stickers={post.stickers}
+      />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0A0A0C]/90 via-transparent to-[#0A0A0C]/35" />
       {paused && (
         <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#0A0A0C]/65 backdrop-blur">
@@ -2504,9 +2316,18 @@ function Reel({
         <p className="text-sm">
           {post.caption} {post.tag && <span className="text-[#FFB800]">{post.tag}</span>}
         </p>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Music className="h-4 w-4 text-[#FFB800]" />
-          <span className="truncate">{post.track ?? `Original Audio — ${post.user.handle}`}</span>
+        <div className="flex max-w-xs items-center gap-2 rounded-full bg-[#0A0A0C]/55 px-3 py-1 text-xs text-foreground/90 backdrop-blur">
+          <Music className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex w-max whitespace-nowrap animate-marquee">
+              <span className="pr-8">
+                🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
+              </span>
+              <span aria-hidden="true" className="pr-8">
+                🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
       <div className="absolute bottom-24 right-3 flex flex-col items-center gap-5 lg:bottom-10">

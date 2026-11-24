@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Auth } from "@/components/tumeni/Auth";
 import { TumeniApp } from "@/components/tumeni/App";
 import { readSetup, type SetupProfile } from "@/components/tumeni/onboarding";
+import { upsertAccountRecord } from "@/components/tumeni/storage";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -33,7 +34,11 @@ function Index() {
     try {
       const id = localStorage.getItem("tumeni-account");
       setAccount(id);
-      if (id) setSetup(readSetup(localStorage.getItem(`tumeni-setup:${id}`)));
+      if (id) {
+        const parsed = readSetup(localStorage.getItem(`tumeni-setup:${id}`));
+        setSetup(parsed);
+        if (parsed) upsertAccountRecord(id, parsed);
+      }
     } catch {
       setStorageError(true);
     }
@@ -43,6 +48,7 @@ function Index() {
     try {
       localStorage.setItem(`tumeni-setup:${id}`, JSON.stringify(profile));
       localStorage.setItem("tumeni-account", id);
+      upsertAccountRecord(id, profile);
       setStorageError(false);
     } catch {
       setStorageError(true);

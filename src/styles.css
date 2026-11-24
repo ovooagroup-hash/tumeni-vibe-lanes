@@ -257,3 +257,21 @@
 @utility animate-ring-pulse {
   animation: ring-pulse 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+@utility animate-marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee 11s linear infinite;
+}
+
+@utility pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}

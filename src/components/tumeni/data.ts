@@ -96,7 +96,7 @@ export const SUGGESTED_PEOPLE: SuggestedPerson[] = [
     user: USER_MAP.nala,
     bio: "Late night sets, Afrohouse edits & downtown visuals.",
     vibeTag: "#Visuals",
-    mutuals: 6,
+    mutuals: 14,
     followers: 14200,
     nearYou: true,
     sharedWith: [USER_MAP.zuri, USER_MAP.kito, USER_MAP.yung],
@@ -105,7 +105,7 @@ export const SUGGESTED_PEOPLE: SuggestedPerson[] = [
     user: USER_MAP.kito,
     bio: "808s, Rhodes chords, and unreleased log drum packs.",
     vibeTag: "#Producer",
-    mutuals: 4,
+    mutuals: 9,
     followers: 8900,
     nearYou: true,
     sharedWith: [USER_MAP.yung, USER_MAP.dre, USER_MAP.nala],
@@ -114,7 +114,7 @@ export const SUGGESTED_PEOPLE: SuggestedPerson[] = [
     user: USER_MAP.zuri,
     bio: "Film reels, rooftop sessions, and good energy.",
     vibeTag: "#Filmmaker",
-    mutuals: 3,
+    mutuals: 6,
     followers: 5400,
     nearYou: true,
     sharedWith: [USER_MAP.nala, USER_MAP.dre],
@@ -123,7 +123,7 @@ export const SUGGESTED_PEOPLE: SuggestedPerson[] = [
     user: USER_MAP.dre,
     bio: "Choreography, freestyle clips, and studio linkups.",
     vibeTag: "#Choreo",
-    mutuals: 5,
+    mutuals: 11,
     followers: 11300,
     nearYou: false,
     sharedWith: [USER_MAP.zuri, USER_MAP.kito, USER_MAP.haha],
@@ -132,7 +132,7 @@ export const SUGGESTED_PEOPLE: SuggestedPerson[] = [
     user: USER_MAP.yung,
     bio: "Creative director & sound curator on tumeni.",
     vibeTag: "#Curator",
-    mutuals: 2,
+    mutuals: 5,
     followers: 24800,
     nearYou: true,
     sharedWith: [USER_MAP.kito, USER_MAP.nala],
@@ -141,12 +141,220 @@ export const SUGGESTED_PEOPLE: SuggestedPerson[] = [
     user: USER_MAP.haha,
     bio: "Daily chaos, studio outtakes, and campus comedy.",
     vibeTag: "#Comedy",
-    mutuals: 7,
+    mutuals: 17,
     followers: 31500,
     nearYou: false,
     sharedWith: [USER_MAP.dre, USER_MAP.zuri, USER_MAP.kito],
   },
 ];
+
+export const FRIEND_REQUESTS: SuggestedPerson[] = [
+  {
+    user: {
+      id: "sora-req",
+      name: "Sora Waves",
+      handle: "@sora.wav",
+      avatar: avatar(25),
+      verified: true,
+    },
+    bio: "Analog synths & rooftop sessions every Friday.",
+    vibeTag: "#Synths",
+    mutuals: 8,
+    followers: 9600,
+    nearYou: true,
+    sharedWith: [USER_MAP.kito, USER_MAP.nala, USER_MAP.yung],
+  },
+  {
+    user: { id: "milo-req", name: "Milo 808", handle: "@milo808", avatar: avatar(33) },
+    bio: "Sub bass designer & studio engineer.",
+    vibeTag: "#Mixing",
+    mutuals: 4,
+    followers: 4100,
+    nearYou: true,
+    sharedWith: [USER_MAP.kito, USER_MAP.dre],
+  },
+];
+
+export type SoundCategory = "Trending" | "Hip-Hop & R&B" | "Amapiano & Afrobeats" | "Lo-Fi & Chill";
+
+export const SOUND_CATEGORIES: SoundCategory[] = [
+  "Trending",
+  "Hip-Hop & R&B",
+  "Amapiano & Afrobeats",
+  "Lo-Fi & Chill",
+];
+
+export type SoundTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  category: SoundCategory;
+  duration: string;
+  cover: string;
+  url: string;
+  youtubeId?: string | undefined;
+  source?: string | undefined;
+};
+
+export const TRENDING_SOUNDS: SoundTrack[] = [
+  {
+    id: "snd-1",
+    title: "Water",
+    artist: "Tyla",
+    category: "Trending",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/1e/c9/5b/1ec95bbc-a56f-cbef-070c-ddec9f4fdd3c/196871296205.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/9a/62/e6/9a62e688-9080-feed-2411-cc793c4545cf/mzaf_4449175929344535361.plus.aac.p.m4a",
+  },
+  {
+    id: "snd-2",
+    title: "Not Like Us",
+    artist: "Kendrick Lamar",
+    category: "Trending",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/31/3a/3f/313a3fbc-bb8f-80c7-b5a2-e226869a38cd/24UMGIM51924.rgb.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/2d/e0/e8/2de0e874-cd0b-e9a9-e876-76be13a86662/mzaf_12385336780649591409.plus.aac.p.m4a",
+  },
+  {
+    id: "snd-3",
+    title: "City Boys",
+    artist: "Burna Boy",
+    category: "Hip-Hop & R&B",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/01/ee/63/01ee6370-1805-15e4-de8c-293a889a39c/075679676351.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/63/42/9d/63429d7b-07e9-4c3c-8deb-a96719b9c436/mzaf_7227801979892688743.plus.aac.p.m4a",
+  },
+  {
+    id: "snd-4",
+    title: "Snooze",
+    artist: "SZA",
+    category: "Hip-Hop & R&B",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/62/93/13/6293132e-20ff-67ab-3d1f-96bb6797a6ba/196589564955.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/b3/9b/ca/b39bca57-2627-1aec-77af-cbf551205394/mzaf_4430383240210492712.plus.aac.p.m4a",
+  },
+  {
+    id: "snd-5",
+    title: "Calm Down",
+    artist: "Rema & Selena Gomez",
+    category: "Amapiano & Afrobeats",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/ee/f1/dc/eef1dc82-f516-fd0f-581c-3f952a0e2243/22UMGIM92113.rgb.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/c3/c7/54/c3c754cd-6680-4818-9182-e08a719d59ba/mzaf_1190051474475595816.plus.aac.p.m4a",
+  },
+  {
+    id: "snd-6",
+    title: "Essence (feat. Tems)",
+    artist: "Wizkid",
+    category: "Amapiano & Afrobeats",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/b0/09/8e/b0098ed0-ef53-f2b5-386a-c8e6181f3c8a/886448775256.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/b3/dc/ba/b3dcba73-7f33-9abe-089c-73557a6dcb54/mzaf_16412591162283722395.plus.aac.p.m4a",
+  },
+  {
+    id: "snd-7",
+    title: "Tanzania (feat. Sino Msolo)",
+    artist: "Uncle Waffles & Tony Duardo",
+    category: "Amapiano & Afrobeats",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/df/fe/54/dffe545f-716a-2b46-8ee8-c5aeaeb68db7/757572933495.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/ab/fd/25/abfd2533-3a55-ede0-8564-840ffb3806b4/mzaf_6356538675244338564.plus.aac.p.m4a",
+  },
+  {
+    id: "snd-8",
+    title: "Late Night Chill LoFi Beats",
+    artist: "Lofi Chill Beats",
+    category: "Lo-Fi & Chill",
+    duration: "0:30",
+    cover:
+      "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/a1/1b/b7/a11bb7fc-12c8-72f2-be48-3b3251e32808/4550796537175_cover.jpg/100x100bb.jpg",
+    url: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/1b/a1/26/1ba1268d-6536-353b-34cc-ae5d5f1d54da/mzaf_4348148378300859511.plus.aac.p.m4a",
+  },
+];
+
+const CATEGORY_SEARCH_TERMS: Record<SoundCategory, string> = {
+  Trending: "top hits 2024",
+  "Hip-Hop & R&B": "hip hop rnb",
+  "Amapiano & Afrobeats": "amapiano afrobeats",
+  "Lo-Fi & Chill": "lofi chill beats",
+};
+
+export async function searchOnlineSongs(
+  query: string,
+  category: SoundCategory = "Trending",
+  signal?: AbortSignal,
+): Promise<SoundTrack[]> {
+  const term = query.trim() || CATEGORY_SEARCH_TERMS[category];
+  try {
+    const apiRes = await fetch(
+      `/api/music/search?q=${encodeURIComponent(query.trim())}&category=${encodeURIComponent(category)}`,
+      signal ? { signal } : undefined,
+    );
+    if (apiRes.ok) {
+      const payload = (await apiRes.json()) as { tracks?: SoundTrack[] };
+      if (Array.isArray(payload.tracks) && payload.tracks.length > 0) {
+        return payload.tracks.map((t) => ({
+          ...t,
+          cover: t.cover || TRENDING_SOUNDS[0]!.cover,
+        }));
+      }
+    }
+  } catch {
+    /* Fall through to direct iTunes lookup if aborted/unavailable */
+  }
+  if (signal?.aborted) return [];
+  try {
+    const res = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=18`,
+      signal ? { signal } : undefined,
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      results?: Array<{
+        trackId?: number;
+        trackName?: string;
+        artistName?: string;
+        previewUrl?: string;
+        artworkUrl100?: string;
+        artworkUrl60?: string;
+      }>;
+    };
+    const items = data.results ?? [];
+    const tracks: SoundTrack[] = [];
+    for (const item of items) {
+      if (!item.previewUrl || !item.trackName || !item.artistName) continue;
+      tracks.push({
+        id: `itunes-${item.trackId ?? crypto.randomUUID()}`,
+        title: item.trackName,
+        artist: item.artistName,
+        category,
+        duration: "0:30",
+        cover: item.artworkUrl100 ?? item.artworkUrl60 ?? TRENDING_SOUNDS[0]!.cover,
+        url: item.previewUrl,
+        source: "Apple Music",
+      });
+    }
+    return tracks;
+  } catch {
+    return [];
+  }
+}
+
+export const FEELING_MOODS = [
+  { emoji: "🎧", label: "In the Studio" },
+  { emoji: "🔥", label: "Hyped" },
+  { emoji: "🌙", label: "Late Night" },
+  { emoji: "✨", label: "Blessed" },
+  { emoji: "⚡", label: "Locked In" },
+  { emoji: "😂", label: "Laughing" },
+] as const;
 
 export type Crew = {
   id: string;
@@ -192,23 +400,48 @@ export const CREWS: Crew[] = [
   },
 ];
 
+export type VideoOverlay = {
+  id: string;
+  text: string;
+  style: "classic" | "gold" | "pill" | "outline";
+  color: string;
+  position: "top" | "center" | "bottom";
+};
+
+export type VideoSticker = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+};
+
 export type Comment = { id: string; user: User; text: string };
 export type Post = {
   id: string;
   user: User;
+  authorAccountId?: string | undefined;
   lane: Lane;
   kind: Kind;
   time: string;
   caption: string;
   tag?: string | undefined;
   media?: string | undefined;
+  mediaStorageKey?: string | undefined;
   mediaIsVideo?: boolean | undefined;
   audience?: Audience | undefined;
   video?: string | undefined;
   audio?: string | undefined;
+  soundUrl?: string | undefined;
+  soundYoutubeId?: string | undefined;
   views?: number | undefined;
   duration?: string | undefined;
   track?: string | undefined;
+  filterClass?: string | undefined;
+  effectId?: string | undefined;
+  playbackSpeed?: number | undefined;
+  overlays?: VideoOverlay[] | undefined;
+  stickers?: VideoSticker[] | undefined;
+  mood?: string | undefined;
   likes: number;
   liked?: boolean | undefined;
   saved?: boolean | undefined;
@@ -229,7 +462,9 @@ export const SEED_POSTS: Post[] = [
     video: "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
     media: "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
     mediaIsVideo: true,
-    track: "Original Audio — @nalagold",
+    track: "Water — Tyla",
+    soundUrl:
+      "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/9a/62/e6/9a62e688-9080-feed-2411-cc793c4545cf/mzaf_4449175929344535361.plus.aac.p.m4a",
     views: 14280,
     likes: 1312,
     shares: 89,
@@ -250,7 +485,9 @@ export const SEED_POSTS: Post[] = [
     video: "https://samplelib.com/lib/preview/mp4/sample-10s.mp4",
     media: "https://samplelib.com/lib/preview/mp4/sample-10s.mp4",
     mediaIsVideo: true,
-    track: "YungVibeZ — Gold Hour Edit",
+    track: "City Boys — Burna Boy",
+    soundUrl:
+      "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/63/42/9d/63429d7b-07e9-4c3c-8deb-a96719b9c436/mzaf_7227801979892688743.plus.aac.p.m4a",
     views: 9840,
     likes: 742,
     shares: 53,
@@ -263,14 +500,15 @@ export const SEED_POSTS: Post[] = [
     kind: "audio",
     audience: "public",
     time: "1h ago",
-    caption: "Cooked this up at 2 AM — warm Rhodes + deep log drum bounce.",
+    caption: "Late night rotation — warm vocals + deep log drum bounce.",
     tag: "#Afrohouse",
-    audio: "https://samplelib.com/lib/preview/mp3/sample-15s.mp3",
-    track: "Kito Beats — Obsidian Groove (Demo)",
-    duration: "0:15",
+    audio:
+      "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/b3/dc/ba/b3dcba73-7f33-9abe-089c-73557a6dcb54/mzaf_16412591162283722395.plus.aac.p.m4a",
+    track: "Essence (feat. Tems) — Wizkid",
+    duration: "0:30",
     likes: 486,
     shares: 64,
-    comments: [{ id: "c-3", user: USER_MAP.yung, text: "Send the stems to the crew!" }],
+    comments: [{ id: "c-3", user: USER_MAP.yung, text: "Timeless rotation right here!" }],
   },
   {
     id: "post-4",
@@ -343,13 +581,14 @@ export const SEED_POSTS: Post[] = [
 ];
 
 export function canViewPost(
-  post: Pick<Post, "user" | "audience">,
+  post: Pick<Post, "user" | "audience" | "authorAccountId">,
   viewerId: string,
   friendIds: readonly string[],
 ) {
-  if (post.user.id === viewerId) return true;
+  if (post.user.id === viewerId || post.authorAccountId === viewerId) return true;
   if (!post.audience || post.audience === "public") return true;
-  return post.audience === "friends" && friendIds.includes(post.user.id);
+  const authorId = post.authorAccountId ?? post.user.id;
+  return post.audience === "friends" && friendIds.includes(authorId);
 }
 
 export function getVisiblePosts(posts: Post[], viewerId: string, friendIds: readonly string[]) {
@@ -486,6 +725,103 @@ export const SEED_CHATS: Chat[] = [
   },
 ];
 
+export type LiveChatMsg = {
+  id: string;
+  user: string;
+  avatar: string;
+  text: string;
+};
+
+export type LiveStreamItem = {
+  id: string;
+  title: string;
+  host: User;
+  tag: string;
+  videoUrl: string;
+  audioUrl?: string | undefined;
+  viewers: number;
+  likes: number;
+  initialChat: LiveChatMsg[];
+};
+
+export const LIVE_STREAMS: LiveStreamItem[] = [
+  {
+    id: "live-kito",
+    title: "Midnight Beat Lab",
+    host: USER_MAP.kito,
+    tag: "#BeatLab",
+    videoUrl: "https://samplelib.com/lib/preview/mp4/sample-10s.mp4",
+    audioUrl:
+      "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/ab/fd/25/abfd2533-3a55-ede0-8564-840ffb3806b4/mzaf_6356538675244338564.plus.aac.p.m4a",
+    viewers: 1420,
+    likes: 4820,
+    initialChat: [
+      {
+        id: "lc-1",
+        user: "@nalagold",
+        avatar: USER_MAP.nala.avatar,
+        text: "That 808 bounce is crazy 🔥",
+      },
+      {
+        id: "lc-2",
+        user: "@zuri.k",
+        avatar: USER_MAP.zuri.avatar,
+        text: "Drop the stems in Night Owls!",
+      },
+      {
+        id: "lc-3",
+        user: "@dre.moves",
+        avatar: USER_MAP.dre.avatar,
+        text: "Need to choreograph to this tonight",
+      },
+    ],
+  },
+  {
+    id: "live-nala",
+    title: "Rooftop Visual Set",
+    host: USER_MAP.nala,
+    tag: "#Visuals",
+    videoUrl: "https://samplelib.com/lib/preview/mp4/sample-15s.mp4",
+    audioUrl:
+      "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/b3/9b/ca/b39bca57-2627-1aec-77af-cbf551205394/mzaf_4430383240210492712.plus.aac.p.m4a",
+    viewers: 890,
+    likes: 2340,
+    initialChat: [
+      {
+        id: "lc-4",
+        user: "@yungvibez",
+        avatar: USER_MAP.yung.avatar,
+        text: "Golden lighting looking cinematic 💛",
+      },
+      {
+        id: "lc-5",
+        user: "@kitobeats",
+        avatar: USER_MAP.kito.avatar,
+        text: "Sending the master mix right now",
+      },
+    ],
+  },
+  {
+    id: "live-dre",
+    title: "Late Night Rehearsal",
+    host: USER_MAP.dre,
+    tag: "#Dance",
+    videoUrl: "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+    audioUrl:
+      "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/2d/e0/e8/2de0e874-cd0b-e9a9-e876-76be13a86662/mzaf_12385336780649591409.plus.aac.p.m4a",
+    viewers: 615,
+    likes: 1690,
+    initialChat: [
+      {
+        id: "lc-6",
+        user: "@hahahub",
+        avatar: USER_MAP.haha.avatar,
+        text: "Footwork on point 💯",
+      },
+    ],
+  },
+];
+
 export type LiveRoomConfig = {
   id: string;
   title: string;
@@ -512,8 +848,9 @@ export const LIVE_ROOM: LiveRoomConfig = {
     { id: "l-4", name: "Jae", handle: "@jae.studio", avatar: avatar(52) },
     { id: "l-5", name: "Kairo", handle: "@kairo.fm", avatar: avatar(61) },
   ],
-  baseListeners: 48,
-  streamUrl: "https://samplelib.com/lib/preview/mp3/sample-15s.mp3",
+  baseListeners: 1420,
+  streamUrl:
+    "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/ab/fd/25/abfd2533-3a55-ede0-8564-840ffb3806b4/mzaf_6356538675244338564.plus.aac.p.m4a",
   tag: "#BeatLab",
 };
 

@@ -17,10 +17,12 @@ import { LogoMark, Wordmark } from "./Logo";
 import {
   INTERESTS,
   profileError,
+  readSetup,
   testIdentity,
   toggleSelection,
   type SetupProfile,
 } from "./onboarding";
+import { loadAllAccounts, type AccountRecord } from "./storage";
 
 const G = () => (
   <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden="true">
@@ -71,6 +73,7 @@ export function Auth({
   const [profile, setProfile] = useState<SetupProfile>(empty);
   const [error, setError] = useState("");
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [savedAccounts] = useState<AccountRecord[]>(() => loadAllAccounts());
   const upload = useRef<HTMLInputElement>(null);
 
   const next = () => {
@@ -79,6 +82,15 @@ export function Auth({
     window.scrollTo(0, 0);
   };
   const enter = (id: string) => {
+    try {
+      const existing = readSetup(localStorage.getItem(`tumeni-setup:${id}`));
+      if (existing) {
+        onLogin(id, existing);
+        return;
+      }
+    } catch {
+      /* Continue with fresh setup. */
+    }
     setAccount(id);
     setPassword("");
     next();
@@ -237,6 +249,48 @@ export function Auth({
                 <br />
                 No verification required.
               </p>
+
+              {savedAccounts.length > 0 && (
+                <div className="mt-7 rounded-2xl border border-[#222228] bg-[#141418] p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Continue as saved account
+                  </p>
+                  <div className="space-y-2">
+                    {savedAccounts.map((rec) => {
+                      const initialChar = (rec.profile.name.trim() || "T").charAt(0).toUpperCase();
+                      return (
+                        <button
+                          key={rec.accountId}
+                          type="button"
+                          onClick={() => onLogin(rec.accountId, rec.profile)}
+                          className="flex min-h-[52px] w-full items-center gap-3 rounded-xl border border-[#222228] bg-[#0A0A0C] px-3 py-2 text-left transition hover:border-[#FFB800]"
+                        >
+                          {rec.profile.avatar ? (
+                            <img
+                              src={rec.profile.avatar}
+                              alt={rec.profile.name}
+                              className="h-9 w-9 shrink-0 rounded-full border border-[#FFB800]/60 object-cover"
+                            />
+                          ) : (
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/60 bg-[#141418] text-sm font-bold text-[#FFB800]">
+                              {initialChar}
+                            </span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-foreground">
+                              {rec.profile.name}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {rec.profile.handle} · {rec.followers.length} followers
+                            </p>
+                          </div>
+                          <ArrowRight className="h-4 w-4 shrink-0 text-[#FFB800]" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
