@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  FEED_CATEGORIES,
   FEELING_MOODS,
   POST_AUDIENCES,
   SOUND_CATEGORIES,
@@ -46,6 +47,7 @@ import {
   searchOnlineSongs,
   type Audience,
   type Kind,
+  type Lane,
   type SoundCategory,
   type SoundTrack,
   type StudioFilterOption,
@@ -54,7 +56,9 @@ import {
   type VideoSticker,
 } from "./data";
 import { Avatar } from "./SharedUI";
+import { AiCaptionPolish } from "./AiCaptionPolish";
 import { saveMediaBlob } from "./storage";
+import { claimMediaFocus, releaseMediaFocus } from "./mediaCoordinator";
 
 export type StudioLaunchMode = "camera" | "status" | "gallery";
 
@@ -127,7 +131,7 @@ const SCENE_PRESETS: ScenePreset[] = [
 
 const SPEEDS = [0.5, 1, 2] as const;
 const TIMERS = [0, 3, 10] as const;
-const QUICK_HASHTAGS = ["#tumeni", "#fyp", "#vibe", "#NightOut", "#Afrobeats", "#StudioVibes"];
+const QUICK_HASHTAGS = ["#tumeni", "#fyp", "#funny", "#amapiano", "#vlog", "#sports"];
 const STICKER_PRESETS = ["🔥", "💯", "🎬", "🎧", "✨", "👑", "⚡", "😂", "NEW DROP", "LIVE VIBES"];
 const TEXT_COLORS = ["#FFFFFF", "#FFB800", "#0A0A0C", "#EF4444", "#38BDF8"] as const;
 const TEXT_STYLES: { id: VideoOverlay["style"]; label: string }[] = [
@@ -136,7 +140,8 @@ const TEXT_STYLES: { id: VideoOverlay["style"]; label: string }[] = [
   { id: "pill", label: "Dark Pill" },
   { id: "outline", label: "Shadow" },
 ];
-const FALLBACK_SAMPLE_VIDEO = "https://samplelib.com/lib/preview/mp4/sample-5s.mp4";
+const FALLBACK_SAMPLE_VIDEO =
+  "https://cdn.coverr.co/videos/coverr-neon-glow-fashion-portrait/720p.mp4";
 
 function pickRecorderMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
@@ -289,6 +294,7 @@ export function StudioCameraModal({
   onClose: () => void;
   onPublish: (p: {
     kind: Kind;
+    lane?: Lane | undefined;
     audience: Audience;
     caption: string;
     tag?: string | undefined;
@@ -366,9 +372,17 @@ export function StudioCameraModal({
 
   // TikTok Post / Review details
   const [caption, setCaption] = useState("");
-  const [hashtag, setHashtag] = useState("#tumeni #vibe");
+  const [hashtag, setHashtag] = useState("#tumeni #fyp");
   const [audience, setAudience] = useState<Audience>("public");
+  const [selectedLane, setSelectedLane] = useState<Lane>("vlog");
   const [selectedMood, setSelectedMood] = useState<string>("");
+
+  useEffect(() => {
+    claimMediaFocus("studio-camera");
+    return () => {
+      releaseMediaFocus("studio-camera");
+    };
+  }, []);
 
   const camVideoRef = useRef<HTMLVideoElement>(null);
   const studioCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -1099,8 +1113,9 @@ export function StudioCameraModal({
 
     onPublish({
       kind: capturedKind,
+      lane: selectedLane,
       audience: targetAudience,
-      caption: caption.trim() || (capturedKind === "video" ? "Fresh studio cut" : "Studio moment"),
+      caption: caption.trim() || (capturedKind === "video" ? "Fresh clip" : "New moment"),
       tag: cleanedTag || undefined,
       track: selectedSound
         ? `${selectedSound.title} — ${selectedSound.artist}`
@@ -1135,6 +1150,7 @@ export function StudioCameraModal({
 
     onPublish({
       kind: "text",
+      lane: selectedLane,
       audience,
       caption: caption.trim() || `Feeling ${selectedMood}`,
       tag: cleanedTag || undefined,
@@ -1604,6 +1620,20 @@ export function StudioCameraModal({
           />
 
           <div className="mt-3">
+            <AiCaptionPolish
+              roughIdea={caption}
+              mediaType="text"
+              category={selectedLane}
+              onApply={(text, tags) => {
+                setCaption(text);
+                if (tags) {
+                  setHashtag(tags);
+                }
+              }}
+            />
+          </div>
+
+          <div className="mt-3">
             <p className="mb-2 text-xs font-medium text-muted-foreground">Feeling / Vibe</p>
             <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
               {FEELING_MOODS.map((m) => {
@@ -1621,6 +1651,29 @@ export function StudioCameraModal({
                     }`}
                   >
                     {val}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Category</p>
+            <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
+              {FEED_CATEGORIES.filter((c) => c.id !== "all").map((cat) => {
+                const active = selectedLane === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedLane(cat.id as Lane)}
+                    className={`min-h-[32px] shrink-0 whitespace-nowrap rounded-full border px-3 text-[11px] font-semibold transition ${
+                      active
+                        ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
+                        : "border-[#222228] bg-[#0A0A0C] text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {cat.emoji} {cat.label}
                   </button>
                 );
               })}
@@ -2179,8 +2232,28 @@ export function StudioCameraModal({
               </div>
             </div>
 
-            {/* Hashtag Input + Quick Chips */}
-            <div className="space-y-2 px-4 pb-4">
+            {/* AI Caption Polish + Hashtag Input + Quick Chips */}
+            <div className="space-y-2.5 px-4 pb-4">
+              <AiCaptionPolish
+                roughIdea={caption}
+                mediaType={capturedKind}
+                category={selectedLane}
+                onApply={(text, tags) => {
+                  setCaption(text);
+                  if (tags) {
+                    const existing = hashtag
+                      .split(/\s+/)
+                      .map((t) => t.trim())
+                      .filter(Boolean);
+                    const incoming = tags
+                      .split(/\s+/)
+                      .map((t) => t.trim())
+                      .filter(Boolean);
+                    const merged = Array.from(new Set([...existing, ...incoming]));
+                    setHashtag(merged.join(" "));
+                  }
+                }}
+              />
               <label className="flex items-center gap-2 rounded-xl border border-[#222228] bg-[#141418] px-3 focus-within:border-[#FFB800] sm:bg-[#0A0A0C]">
                 <Hash className="h-4 w-4 shrink-0 text-[#FFB800]" />
                 <input
@@ -2208,6 +2281,28 @@ export function StudioCameraModal({
                     </button>
                   );
                 })}
+              </div>
+              <div className="space-y-1.5 pt-1">
+                <p className="text-[11px] font-semibold text-muted-foreground">Category</p>
+                <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
+                  {FEED_CATEGORIES.filter((c) => c.id !== "all").map((cat) => {
+                    const active = selectedLane === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setSelectedLane(cat.id as Lane)}
+                        className={`min-h-[32px] shrink-0 whitespace-nowrap rounded-full border px-3 text-[11px] font-semibold transition ${
+                          active
+                            ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
+                            : "border-[#222228] bg-[#141418] text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {cat.emoji} {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 

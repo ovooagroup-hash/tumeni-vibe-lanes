@@ -33,9 +33,12 @@ import {
   ThumbsUp,
   Smile,
   Disc3,
+  Loader2,
+  MapPin,
 } from "lucide-react";
 import { LogoMark } from "./Logo";
 import {
+  FEED_CATEGORIES,
   SEED_POSTS,
   SEED_CHATS,
   PROFILES,
@@ -50,6 +53,7 @@ import {
   type Audience,
   type Comment,
   type Kind,
+  type Lane,
   type Post,
   type Chat,
   type User,
@@ -57,13 +61,32 @@ import {
   type Crew,
   type SuggestedPerson,
 } from "./data";
-import { toggleSelection, profileError, type SetupProfile } from "./onboarding";
+import {
+  POPULAR_CITIES,
+  compressAvatarFile,
+  normalizeCity,
+  toggleSelection,
+  profileError,
+  type SetupProfile,
+} from "./onboarding";
+import {
+  fetchCloudPosts,
+  listDirectoryProfiles,
+  publishCloudPost,
+  toggleCloudFollow,
+} from "@/lib/tumeni-db";
 import { StoriesBar } from "./Stories";
 import { Avatar, Waveform } from "./SharedUI";
 import { CircleRadarCarousel, CircleRadarHub, type RadarFilter } from "./CircleRadar";
 import { MessagesList, CrewChatRoom } from "./CrewChat";
 import { LiveMiniPlayer, LiveVibeRoomSheet } from "./LiveVibeRoom";
 import { StudioCameraModal, VideoStageDecorations, type StudioLaunchMode } from "./StudioCamera";
+import {
+  claimMediaFocus,
+  getActiveMediaFocus,
+  releaseMediaFocus,
+  subscribeMediaFocus,
+} from "./mediaCoordinator";
 import {
   loadAllAccounts,
   loadPersistedUserPosts,
@@ -158,6 +181,10 @@ function FacebookActions({
 
 function PostCard({
   post,
+  muted,
+  onToggleMute,
+  onForceMute,
+  pauseExternal,
   onLike,
   onComment,
   onShare,
@@ -165,55 +192,179 @@ function PostCard({
   onOpen,
 }: {
   post: Post;
+  muted: boolean;
+  onToggleMute: () => void;
+  onForceMute: () => void;
+  pauseExternal: boolean;
   onLike: () => void;
   onComment: () => void;
   onShare: () => void;
   onSave: () => void;
   onOpen?: (() => void) | undefined;
 }) {
+  const playerId = `feed-${post.id}`;
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [nearView, setNearView] = useState(false);
+  const [inFocus, setInFocus] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
+  const mediaBoxRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const soundAudioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const userPausedRef = useRef(false);
+  const prevInFocusRef = useRef(false);
+  const prevPauseExternalRef = useRef(pauseExternal);
+  const prevNearViewRef = useRef(false);
+  const onForceMuteRef = useRef(onForceMute);
+  onForceMuteRef.current = onForceMute;
+
+  const videoSrc = post.video ?? post.media;
+  const shouldMountVideo = nearView || playing;
+
+  // Stop immediately whenever another video, reel, story, live room, or voice note claims focus
+  useEffect(() => {
+    return subscribeMediaFocus((activeId) => {
+      if (activeId !== playerId) {
+        setPlaying(false);
+      }
+    });
+  }, [playerId]);
+
+  // Mount video/audio decoders only when card is near viewport (prevents browser decoder starvation)
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || (post.kind !== "video" && post.kind !== "audio")) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) setNearView(entry.isIntersecting);
+      },
+      { rootMargin: "650px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [post.kind]);
+
+  // Auto-play active video card smoothly when centered in viewport, and auto-pause when scrolled past
+  useEffect(() => {
+    const el = mediaBoxRef.current;
+    if (!el || post.kind !== "video") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.6;
+        setInFocus(visible);
+        if (!visible) {
+          userPausedRef.current = false;
+        }
+      },
+      { threshold: [0, 0.3, 0.6, 0.85] },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [post.kind]);
 
   useEffect(() => {
+    const wasInFocus = prevInFocusRef.current;
+    const wasPausedExternal = prevPauseExternalRef.current;
+    const wasNearView = prevNearViewRef.current;
+    prevInFocusRef.current = inFocus;
+    prevPauseExternalRef.current = pauseExternal;
+    prevNearViewRef.current = nearView;
+
+    if (pauseExternal) {
+      setPlaying(false);
+      releaseMediaFocus(playerId);
+      return;
+    }
+
+    if (post.kind === "video") {
+      if (inFocus && (!wasInFocus || wasPausedExternal) && !userPausedRef.current) {
+        claimMediaFocus(playerId);
+        setPlaying(true);
+      } else if ((!inFocus && wasInFocus) || (!nearView && wasNearView)) {
+        setPlaying(false);
+        releaseMediaFocus(playerId);
+      }
+    } else if (!nearView && wasNearView) {
+      setPlaying(false);
+      releaseMediaFocus(playerId);
+    }
+  }, [inFocus, nearView, pauseExternal, post.kind, playerId]);
+
+  const togglePlayManual = () => {
+    setPlaying((prev) => {
+      const next = !prev;
+      if (next) {
+        userPausedRef.current = false;
+        claimMediaFocus(playerId);
+      } else {
+        userPausedRef.current = true;
+        releaseMediaFocus(playerId);
+      }
+      return next;
+    });
+  };
+
+  // Sync play/pause lifecycle cleanly without restarting on mute toggles
+  useEffect(() => {
     const a = audioRef.current;
-    if (!a) return;
-    if (playing) {
-      void a.play().catch(() => {});
-    } else {
-      a.pause();
+    if (a) {
+      if (playing) {
+        if (a.paused) void a.play().catch(() => {});
+      } else if (!a.paused) {
+        a.pause();
+      }
     }
   }, [playing]);
 
   useEffect(() => {
     const sa = soundAudioRef.current;
     if (!sa) return;
-    sa.muted = muted;
     if (playing && !muted) {
-      void sa.play().catch(() => {});
-    } else {
+      if (sa.paused) void sa.play().catch(() => {});
+    } else if (!sa.paused) {
       sa.pause();
     }
-  }, [playing, muted, post.soundUrl]);
+  }, [playing, muted, post.soundUrl, shouldMountVideo]);
 
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    v.playbackRate = post.playbackSpeed ?? 1;
-    // Mute raw video track when an added artist sound supplies the soundtrack
-    v.muted = post.soundUrl || post.soundYoutubeId ? true : muted;
     if (playing) {
-      void v.play().catch(() => {
-        v.muted = true;
-        if (!post.soundUrl && !post.soundYoutubeId) setMuted(true);
-        void v.play().catch(() => {});
-      });
+      if (v.paused) {
+        void v.play().catch(() => {
+          v.muted = true;
+          onForceMuteRef.current();
+          void v.play().catch(() => {});
+        });
+      }
     } else {
-      v.pause();
+      if (!v.paused) v.pause();
+      setBuffering(false);
     }
-  }, [playing, muted, post.soundUrl, post.soundYoutubeId, post.playbackSpeed]);
+  }, [playing, shouldMountVideo]);
+
+  // Update mute & playback speed independently so toggling mute never kicks/stutters video
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) {
+      v.playbackRate = post.playbackSpeed ?? 1;
+      v.muted = post.soundUrl || post.soundYoutubeId ? true : muted;
+    }
+    const sa = soundAudioRef.current;
+    if (sa) {
+      sa.muted = muted;
+    }
+  }, [muted, post.soundUrl, post.soundYoutubeId, post.playbackSpeed, shouldMountVideo]);
+
+  useEffect(() => {
+    return () => {
+      releaseMediaFocus(playerId);
+    };
+  }, [playerId]);
 
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -222,10 +373,11 @@ function PostCard({
     return () => clearInterval(t);
   }, [playing, post.kind, post.audio]);
 
-  const videoSrc = post.video ?? post.media;
-
   return (
-    <article className="animate-rise border-b border-[#222228] bg-[#141418] py-3 sm:rounded-3xl sm:border sm:p-4">
+    <article
+      ref={cardRef}
+      className="animate-rise border-b border-[#222228] bg-[#141418] py-3 sm:rounded-3xl sm:border sm:p-4"
+    >
       <header className="flex items-center gap-3 px-4 py-1.5 sm:px-0">
         <Avatar src={post.user.avatar} name={post.user.name} handle={post.user.handle} ring />
         <div className="min-w-0 flex-1">
@@ -267,8 +419,18 @@ function PostCard({
       )}
 
       {post.kind === "video" && (
-        <div className="relative mt-3 overflow-hidden bg-[#0A0A0C] sm:rounded-2xl sm:border sm:border-[#222228]">
-          {post.soundUrl && <audio ref={soundAudioRef} src={post.soundUrl} loop preload="none" />}
+        <div
+          ref={mediaBoxRef}
+          className="relative mt-3 overflow-hidden bg-[#0A0A0C] sm:rounded-2xl sm:border sm:border-[#222228]"
+        >
+          {shouldMountVideo && post.soundUrl && (
+            <audio
+              ref={soundAudioRef}
+              src={post.soundUrl}
+              loop
+              preload={playing || inFocus ? "auto" : "metadata"}
+            />
+          )}
           {!post.soundUrl && post.soundYoutubeId && playing && !muted && (
             <iframe
               key={post.soundYoutubeId}
@@ -279,19 +441,31 @@ function PostCard({
             />
           )}
           {videoSrc ? (
-            <video
-              ref={videoRef}
-              src={videoSrc}
-              style={post.filterCss ? { filter: post.filterCss } : undefined}
-              className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${
-                post.filterCss ? "" : (post.filterClass ?? "")
-              }`}
-              loop
-              muted={muted || !!post.soundUrl || !!post.soundYoutubeId}
-              playsInline
-              preload="metadata"
-              onClick={() => setPlaying((prev) => !prev)}
-            />
+            shouldMountVideo ? (
+              <video
+                ref={videoRef}
+                src={videoSrc}
+                style={post.filterCss ? { filter: post.filterCss } : undefined}
+                className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${
+                  post.filterCss ? "" : (post.filterClass ?? "")
+                }`}
+                loop
+                muted={muted || !!post.soundUrl || !!post.soundYoutubeId}
+                playsInline
+                preload={playing || inFocus ? "auto" : "metadata"}
+                onWaiting={() => setBuffering(true)}
+                onPlaying={() => setBuffering(false)}
+                onCanPlay={() => setBuffering(false)}
+                onClick={togglePlayManual}
+              />
+            ) : (
+              <div
+                onClick={togglePlayManual}
+                className="flex aspect-[4/5] w-full items-center justify-center bg-[#0A0A0C]"
+              >
+                <Play className="h-10 w-10 text-muted-foreground/40" />
+              </div>
+            )
           ) : (
             <div className="flex aspect-[4/5] w-full items-center justify-center bg-[#0A0A0C] text-sm text-muted-foreground">
               Video unavailable
@@ -304,10 +478,16 @@ function PostCard({
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0A0A0C]/85 via-transparent to-[#0A0A0C]/25" />
 
+          {playing && buffering && (
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0A0A0C]/70 p-3 backdrop-blur">
+              <Loader2 className="h-6 w-6 animate-spin text-[#FFB800]" />
+            </div>
+          )}
+
           <button
             type="button"
             aria-label={playing ? "Pause video" : "Play video"}
-            onClick={() => setPlaying((prev) => !prev)}
+            onClick={togglePlayManual}
             className={`absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition ${
               playing ? "opacity-0 hover:opacity-100" : "opacity-100"
             }`}
@@ -329,7 +509,7 @@ function PostCard({
             <button
               type="button"
               aria-label={muted ? "Unmute video" : "Mute video"}
-              onClick={() => setMuted((m) => !m)}
+              onClick={onToggleMute}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0A0C]/75 text-foreground backdrop-blur transition hover:text-[#FFB800]"
             >
               {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
@@ -351,13 +531,19 @@ function PostCard({
             <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-[#0A0A0C]/65 px-3 py-1.5 backdrop-blur">
               <Music className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
               <div className="min-w-0 flex-1 overflow-hidden">
-                <div className="flex w-max whitespace-nowrap text-xs font-medium text-foreground/95 animate-marquee">
+                <div
+                  className={`flex w-max whitespace-nowrap text-xs font-medium text-foreground/95 ${
+                    playing ? "animate-marquee" : ""
+                  }`}
+                >
                   <span className="pr-8">
                     🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
                   </span>
-                  <span aria-hidden="true" className="pr-8">
-                    🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
-                  </span>
+                  {playing && (
+                    <span aria-hidden="true" className="pr-8">
+                      🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -424,7 +610,7 @@ function PostCard({
             <button
               type="button"
               aria-label={playing ? "Pause track" : "Play track"}
-              onClick={() => setPlaying(!playing)}
+              onClick={togglePlayManual}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#FFB800] text-[#0A0A0C] glow transition hover:brightness-110"
             >
               {playing ? (
@@ -558,6 +744,8 @@ export function TumeniApp({
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("home");
+  const [feedCategory, setFeedCategory] = useState<"all" | Lane>("all");
+  const [feedMuted, setFeedMuted] = useState(false);
   const [radarFilter, setRadarFilter] = useState<RadarFilter>("suggestions");
   const [posts, setPosts] = useState<Post[]>(SEED_POSTS);
   const [chats, setChats] = useState<Chat[]>(SEED_CHATS);
@@ -573,9 +761,10 @@ export function TumeniApp({
   const [requests, setRequests] = useState<SuggestedPerson[]>(FRIEND_REQUESTS);
   const [joinedCrews, setJoinedCrews] = useState<string[]>([]);
 
-  // Persisted posts & account registry hydration
+  // Persisted posts & account/cloud directory hydration
   const [postsHydrated, setPostsHydrated] = useState(false);
   const [accountsList, setAccountsList] = useState<AccountRecord[]>(() => loadAllAccounts());
+  const [cloudDirectory, setCloudDirectory] = useState<SuggestedPerson[]>([]);
 
   // Live Vibe Room state
   const [liveJoined, setLiveJoined] = useState(false);
@@ -584,6 +773,26 @@ export function TumeniApp({
   const [liveStreamMuted, setLiveStreamMuted] = useState(false);
 
   const reelPosts = posts.filter((p) => p.kind === "video" || p.video || p.mediaIsVideo);
+  const pauseFeedMedia = Boolean(reelAt || liveOpen || studioLaunch !== null || tab !== "home");
+
+  // Auto-mute Live mini-player whenever another video, reel, story, or voice note claims audio focus
+  useEffect(() => {
+    return subscribeMediaFocus((activeId) => {
+      if (activeId && activeId !== "live-room" && liveJoined && !liveOpen) {
+        setLiveStreamMuted(true);
+      }
+    });
+  }, [liveJoined, liveOpen]);
+
+  // Stop any playing feed video/audio immediately when leaving Home tab
+  useEffect(() => {
+    if (tab !== "home") {
+      const current = getActiveMediaFocus();
+      if (current?.startsWith("feed-")) {
+        releaseMediaFocus(current);
+      }
+    }
+  }, [tab]);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -595,9 +804,22 @@ export function TumeniApp({
 
   useEffect(() => {
     let cancelled = false;
+    void listDirectoryProfiles(setup.location).then((items) => {
+      if (!cancelled) setCloudDirectory(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, setup.location]);
+
+  useEffect(() => {
+    let cancelled = false;
     setPostsHydrated(false);
     const hydrate = async () => {
-      const persistedUserPosts = await loadPersistedUserPosts();
+      const [persistedUserPosts, cloudPosts] = await Promise.all([
+        loadPersistedUserPosts(),
+        fetchCloudPosts(account),
+      ]);
       if (cancelled) return;
       const engagement = loadAccountEngagement(account);
       const likedSet = new Set(engagement.likedIds);
@@ -623,9 +845,17 @@ export function TumeniApp({
         };
       };
 
+      const seenPostIds = new Set<string>();
+      const userAndCloudPosts: Post[] = [];
+      for (const p of [...persistedUserPosts, ...cloudPosts]) {
+        if (seenPostIds.has(p.id)) continue;
+        seenPostIds.add(p.id);
+        userAndCloudPosts.push(hydratePost(p, false));
+      }
+
       const merged: Post[] = [
-        ...persistedUserPosts.map((p) => hydratePost(p, false)),
-        ...SEED_POSTS.map((p) => hydratePost(p, true)),
+        ...userAndCloudPosts,
+        ...SEED_POSTS.filter((p) => !seenPostIds.has(p.id)).map((p) => hydratePost(p, true)),
       ];
       setPosts(merged);
       setPostsHydrated(true);
@@ -705,6 +935,16 @@ export function TumeniApp({
     if (accountsList.some((r) => r.accountId === id)) {
       setAccountsList(toggleAccountFollow(account, id));
     }
+    if (cloudDirectory.some((p) => p.user.id === id)) {
+      setCloudDirectory((prev) =>
+        prev.map((p) =>
+          p.user.id === id
+            ? { ...p, followers: Math.max(0, p.followers + (alreadyTapped ? -1 : 1)) }
+            : p,
+        ),
+      );
+      void toggleCloudFollow(account, id, !alreadyTapped);
+    }
     toast.success(alreadyTapped ? `Removed ${name} from friends` : `Friend Added: ${name} ✓`);
   };
 
@@ -775,6 +1015,9 @@ export function TumeniApp({
 
   const registeredPeople: SuggestedPerson[] = accountsList.map((rec) => {
     const firstInterest = rec.profile.interests[0]?.replace(/[^a-zA-Z0-9]/g, "") || "Creator";
+    const { cityLower: myCityLower } = normalizeCity(setup.location ?? "");
+    const recCity = rec.profile.location || rec.profile.city;
+    const { cityLower: recCityLower } = normalizeCity(recCity ?? "");
     return {
       user: {
         id: rec.accountId,
@@ -784,16 +1027,18 @@ export function TumeniApp({
       },
       bio: rec.profile.bio || "Creator on tumeni.",
       vibeTag: `#${firstInterest}`,
+      location: recCity,
+      city: rec.profile.city,
       mutuals: 0,
       followers: rec.followers.length,
-      nearYou: true,
+      nearYou: Boolean(myCityLower && recCityLower && myCityLower === recCityLower),
       sharedWith: [],
     };
   });
 
-  const visibleSuggestions = SUGGESTED_PEOPLE.filter((p) => !dismissedIds.includes(p.user.id));
   const seenPersonIds = new Set<string>();
   const allPeople: SuggestedPerson[] = [
+    ...cloudDirectory,
     ...registeredPeople,
     ...SUGGESTED_PEOPLE,
     ...FRIEND_REQUESTS,
@@ -803,12 +1048,30 @@ export function TumeniApp({
     return true;
   });
 
-  const feed = getVisiblePosts(posts, account, setup.friends);
+  const { cityLower: myCityLower } = normalizeCity(setup.location ?? "");
+  const visibleSuggestions = allPeople
+    .filter((p) => p.user.id !== account && !dismissedIds.includes(p.user.id))
+    .sort((a, b) => {
+      const aMatch = myCityLower
+        ? normalizeCity(a.city ?? a.location ?? "").cityLower === myCityLower
+        : Boolean(a.nearYou);
+      const bMatch = myCityLower
+        ? normalizeCity(b.city ?? b.location ?? "").cityLower === myCityLower
+        : Boolean(b.nearYou);
+      return Number(bMatch) - Number(aMatch);
+    });
+
+  const visibleFeed = getVisiblePosts(posts, account, setup.friends);
+  const feed =
+    feedCategory === "all" ? visibleFeed : visibleFeed.filter((p) => p.lane === feedCategory);
   const myPosts = posts.filter(
     (p) => p.authorAccountId === account || p.user.id === account || p.user.id === "me",
   );
   const activeProfilePosts = isMe ? myPosts : posts.filter((p) => p.user.id === me.id);
-  const myFollowersCount = accountsList.find((r) => r.accountId === account)?.followers.length ?? 0;
+  const myFollowersCount =
+    cloudDirectory.find((p) => p.user.id === account)?.followers ??
+    accountsList.find((r) => r.accountId === account)?.followers.length ??
+    0;
 
   const like = (id: string) =>
     setPosts((ps) => {
@@ -985,6 +1248,26 @@ export function TumeniApp({
               </div>
             </header>
 
+            <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-[#222228] bg-[#0A0A0C]/95 px-4 py-2.5">
+              {FEED_CATEGORIES.map((cat) => {
+                const active = feedCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setFeedCategory(cat.id)}
+                    className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-full border px-3.5 text-xs font-semibold transition ${
+                      active
+                        ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C] shadow-[0_0_12px_rgba(255,184,0,0.3)]"
+                        : "border-[#222228] bg-[#141418] text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {cat.emoji} {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="border-b border-[#222228] bg-[#141418] sm:mx-4 sm:mt-4 sm:rounded-3xl sm:border">
               <StoriesBar me={myUser} />
             </div>
@@ -1000,6 +1283,10 @@ export function TumeniApp({
                 <div key={p.id} className="space-y-4">
                   <PostCard
                     post={p}
+                    muted={feedMuted}
+                    onToggleMute={() => setFeedMuted((m) => !m)}
+                    onForceMute={() => setFeedMuted(true)}
+                    pauseExternal={pauseFeedMedia}
                     onLike={() => like(p.id)}
                     onComment={() => setCommentsFor(p.id)}
                     onShare={() => setShareFor(p)}
@@ -1010,10 +1297,15 @@ export function TumeniApp({
                     <CircleRadarCarousel
                       suggestions={visibleSuggestions}
                       tappedIds={tappedIds}
+                      userLocation={setup.location}
+                      onEditLocation={() => {
+                        setProfileIdx(0);
+                        setTab("profile");
+                      }}
                       onTapIn={handleTapIn}
                       onDismiss={(id) => setDismissedIds((prev) => [...prev, id])}
                       onSeeAll={() => {
-                        setRadarFilter("suggestions");
+                        setRadarFilter(setup.location ? "nearby" : "suggestions");
                         setTab("explore");
                       }}
                     />
@@ -1024,10 +1316,15 @@ export function TumeniApp({
                 <CircleRadarCarousel
                   suggestions={visibleSuggestions}
                   tappedIds={tappedIds}
+                  userLocation={setup.location}
+                  onEditLocation={() => {
+                    setProfileIdx(0);
+                    setTab("profile");
+                  }}
                   onTapIn={handleTapIn}
                   onDismiss={(id) => setDismissedIds((prev) => [...prev, id])}
                   onSeeAll={() => {
-                    setRadarFilter("suggestions");
+                    setRadarFilter(setup.location ? "nearby" : "suggestions");
                     setTab("explore");
                   }}
                 />
@@ -1051,6 +1348,7 @@ export function TumeniApp({
             requests={requests}
             allPeople={allPeople}
             currentAccountId={account}
+            userLocation={setup.location}
             tappedIds={tappedIds}
             joinedCrews={joinedCrews}
             onAddFriend={handleTapIn}
@@ -1162,6 +1460,7 @@ export function TumeniApp({
           <Profile
             me={me}
             bio={isMe ? setup.bio : "Studio sessions & new sounds"}
+            userLocation={isMe ? setup.location : undefined}
             interests={isMe ? setup.interests : []}
             account={account}
             myPosts={activeProfilePosts}
@@ -1174,7 +1473,8 @@ export function TumeniApp({
             followingCount={isMe ? setup.following.length : 0}
             editable={isMe}
             onEdit={(v) => {
-              onSetupChange({ ...setup, ...v });
+              const { location, city } = normalizeCity(v.location);
+              onSetupChange({ ...setup, ...v, location, city });
               setPosts((ps) =>
                 ps.map((p) =>
                   p.authorAccountId === account || p.user.id === account
@@ -1320,6 +1620,10 @@ export function TumeniApp({
         <Reels
           posts={reelPosts.length > 0 ? reelPosts : posts}
           startId={reelAt}
+          initialCategory={feedCategory}
+          suspended={liveOpen || studioLaunch !== null}
+          followingIds={setup.friends}
+          onToggleFollow={handleTapIn}
           liveListenerCount={liveListenerCount}
           onClose={() => setReelAt(null)}
           onOpenLive={handleJoinLiveRoom}
@@ -1352,7 +1656,13 @@ export function TumeniApp({
           hostName={liveIsBroadcast ? myUser.name : undefined}
           listenerCount={liveListenerCount}
           streamMuted={liveStreamMuted}
-          onToggleMute={() => setLiveStreamMuted((m) => !m)}
+          onToggleMute={() => {
+            setLiveStreamMuted((m) => {
+              const next = !m;
+              if (!next) claimMediaFocus("live-room");
+              return next;
+            });
+          }}
           onExpand={() => setLiveOpen(true)}
           onLeave={handleLeaveLiveRoom}
         />
@@ -1430,6 +1740,7 @@ export function TumeniApp({
           onClose={() => setStudioLaunch(null)}
           onPublish={({
             kind,
+            lane,
             audience,
             caption,
             tag,
@@ -1451,7 +1762,7 @@ export function TumeniApp({
               id: crypto.randomUUID(),
               user: myUser,
               authorAccountId: account,
-              lane: "circle",
+              lane: lane ?? "circle",
               kind,
               audience,
               time: "just now",
@@ -1479,6 +1790,7 @@ export function TumeniApp({
               mood,
             };
             setPosts((ps) => [post, ...ps]);
+            void publishCloudPost(account, post).catch(() => {});
             setTab("home");
             setStudioLaunch(null);
             window.scrollTo({ top: 0 });
@@ -1653,6 +1965,7 @@ function RadarSidebarRow({
 function Profile({
   me,
   bio,
+  userLocation,
   interests,
   account,
   myPosts,
@@ -1668,6 +1981,7 @@ function Profile({
 }: {
   me: User;
   bio: string;
+  userLocation?: string | undefined;
   interests: string[];
   account: string;
   myPosts: Post[];
@@ -1675,7 +1989,13 @@ function Profile({
   followersCount: number;
   followingCount: number;
   editable: boolean;
-  onEdit: (v: { name: string; handle: string; bio: string; avatar: string }) => void;
+  onEdit: (v: {
+    name: string;
+    handle: string;
+    bio: string;
+    location: string;
+    avatar: string;
+  }) => void;
   onOpen: (id: string) => void;
   onCreateDrop: () => void;
   onSwitch: () => void;
@@ -1774,7 +2094,13 @@ function Profile({
         </div>
 
         <h1 className="mt-3 break-words text-lg font-bold text-foreground">{me.name}</h1>
-        {editable && account.includes(":") && (
+        {userLocation && (
+          <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[#FFB800]">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span>{userLocation}</span>
+          </p>
+        )}
+        {editable && !userLocation && account.includes(":") && (
           <p className="text-xs text-muted-foreground">{account.split(":")[1]}</p>
         )}
         {bio && (
@@ -1915,6 +2241,7 @@ function Profile({
         <EditProfile
           me={me}
           bio={bio}
+          userLocation={userLocation}
           onClose={() => setEditing(false)}
           onSave={(v) => {
             onEdit(v);
@@ -1930,17 +2257,26 @@ function Profile({
 function EditProfile({
   me,
   bio,
+  userLocation,
   onClose,
   onSave,
 }: {
   me: User;
   bio: string;
+  userLocation?: string | undefined;
   onClose: () => void;
-  onSave: (v: { name: string; handle: string; bio: string; avatar: string }) => void;
+  onSave: (v: {
+    name: string;
+    handle: string;
+    bio: string;
+    location: string;
+    avatar: string;
+  }) => void;
 }) {
   const [name, setName] = useState(me.name);
   const [handle, setHandle] = useState(me.handle.replace(/^@/, ""));
   const [text, setText] = useState(bio);
+  const [cityInput, setCityInput] = useState(userLocation ?? "");
   const [pic, setPic] = useState(me.avatar);
   const [photoError, setPhotoError] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -1960,6 +2296,7 @@ function EditProfile({
               name: name.trim(),
               handle: `@${handle.replace(/^@/, "")}`,
               bio: text.trim(),
+              location: cityInput.trim(),
               avatar: pic,
             });
         }}
@@ -2017,12 +2354,14 @@ function EditProfile({
                 setPhotoError("Choose an image smaller than 5 MB.");
                 return;
               }
-              const reader = new FileReader();
-              reader.onload = () => {
-                if (typeof reader.result === "string") setPic(reader.result);
-                setPhotoError("");
-              };
-              reader.readAsDataURL(file);
+              void compressAvatarFile(file)
+                .then((dataUrl) => {
+                  setPic(dataUrl);
+                  setPhotoError("");
+                })
+                .catch(() => {
+                  setPhotoError("This photo could not be opened. Try another.");
+                });
             }}
           />
           {photoError && <p className="text-xs text-destructive">{photoError}</p>}
@@ -2048,6 +2387,40 @@ function EditProfile({
             />
           </div>
         </label>
+        <div className="mt-3 space-y-2">
+          <label className="block text-xs text-muted-foreground">
+            City / Vibe Zone
+            <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#222228] bg-[#0A0A0C] px-3 focus-within:border-[#FFB800]">
+              <MapPin className="h-4 w-4 shrink-0 text-[#FFB800]" />
+              <input
+                value={cityInput}
+                onChange={(e) => setCityInput(e.target.value)}
+                maxLength={80}
+                placeholder="e.g. Johannesburg, NYC, London..."
+                className="w-full bg-transparent py-2.5 text-base text-foreground outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+          </label>
+          <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
+            {POPULAR_CITIES.map((city) => {
+              const active = cityInput.trim().toLowerCase() === city.toLowerCase();
+              return (
+                <button
+                  key={city}
+                  type="button"
+                  onClick={() => setCityInput(city)}
+                  className={`min-h-[30px] shrink-0 whitespace-nowrap rounded-full border px-3 text-[11px] font-medium transition ${
+                    active
+                      ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
+                      : "border-[#222228] bg-[#0A0A0C] text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {city}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <label className="mt-3 block text-xs text-muted-foreground">
           Bio
           <textarea
@@ -2068,6 +2441,10 @@ function EditProfile({
 function Reels({
   posts,
   startId,
+  initialCategory = "all",
+  suspended = false,
+  followingIds,
+  onToggleFollow,
   liveListenerCount,
   onClose,
   onOpenLive,
@@ -2079,6 +2456,10 @@ function Reels({
 }: {
   posts: Post[];
   startId: string;
+  initialCategory?: "all" | Lane | undefined;
+  suspended?: boolean | undefined;
+  followingIds: string[];
+  onToggleFollow: (id: string, name: string) => void;
   liveListenerCount: number;
   onClose: () => void;
   onOpenLive: () => void;
@@ -2088,13 +2469,53 @@ function Reels({
   onShare: (p: Post) => void;
   onSave: (id: string) => void;
 }) {
-  const [active, setActive] = useState(startId);
+  const [category, setCategory] = useState<"all" | Lane>(initialCategory);
+  const filtered = category === "all" ? posts : posts.filter((p) => p.lane === category);
+  const displayPosts = filtered.length > 0 ? filtered : posts;
+  const [active, setActive] = useState(() =>
+    displayPosts.some((p) => p.id === startId) ? startId : (displayPosts[0]?.id ?? startId),
+  );
   const [muted, setMuted] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const rawIdx = displayPosts.findIndex((p) => p.id === active);
+  const activeIndex = rawIdx >= 0 ? rawIdx : 0;
+  const displayPostIdsKey = displayPosts.map((p) => p.id).join("|");
+  const prevCategoryRef = useRef(category);
+  const didInitialScrollRef = useRef(false);
+
+  useEffect(() => {
+    if (!suspended) {
+      claimMediaFocus("reels");
+    }
+    return () => {
+      releaseMediaFocus("reels");
+    };
+  }, [suspended]);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, []);
+
   useEffect(() => {
     const root = box.current;
     if (!root) return;
-    root.querySelector(`[data-id="${startId}"]`)?.scrollIntoView();
+    if (!didInitialScrollRef.current || prevCategoryRef.current === category) {
+      if (!didInitialScrollRef.current) {
+        didInitialScrollRef.current = true;
+        root.querySelector(`[data-id="${startId}"]`)?.scrollIntoView();
+      }
+    } else {
+      root.scrollTo({ top: 0 });
+    }
+    prevCategoryRef.current = category;
+  }, [startId, category]);
+
+  useEffect(() => {
+    const root = box.current;
+    if (!root) return;
     const io = new IntersectionObserver(
       (es) =>
         es.forEach((e) => {
@@ -2103,12 +2524,10 @@ function Reels({
       { root, threshold: 0.6 },
     );
     root.querySelectorAll("[data-id]").forEach((el) => io.observe(el));
-    document.body.style.overflow = "hidden";
     return () => {
       io.disconnect();
-      document.body.style.overflow = "";
     };
-  }, [startId]);
+  }, [displayPostIdsKey]);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0A0A0C]">
@@ -2116,12 +2535,17 @@ function Reels({
         ref={box}
         className="no-scrollbar mx-auto h-dvh max-w-xl snap-y snap-mandatory overflow-y-scroll"
       >
-        {posts.map((p) => (
+        {displayPosts.map((p, idx) => (
           <Reel
             key={p.id}
             post={p}
-            active={active === p.id}
+            active={!suspended && active === p.id}
+            shouldMountMedia={Math.abs(idx - activeIndex) <= 1}
+            isNext={idx === activeIndex + 1}
             muted={muted}
+            onForceMute={() => setMuted(true)}
+            following={followingIds.includes(p.user.id)}
+            onToggleFollow={() => onToggleFollow(p.user.id, p.user.name)}
             onLike={() => onLike(p.id)}
             onComment={() => onComment(p.id)}
             onShare={() => onShare(p)}
@@ -2129,47 +2553,78 @@ function Reels({
           />
         ))}
       </div>
-      <div className="pointer-events-none fixed inset-x-0 top-0 mx-auto flex max-w-xl items-center justify-between gap-2 p-4">
-        <div className="pointer-events-auto flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="Close reels"
-            onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition hover:text-[#FFB800]"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={onOpenLive}
-            aria-label={`Open live room (${liveListenerCount} listening)`}
-            className="flex min-h-[38px] items-center gap-2 rounded-full border border-red-500/60 bg-[#0A0A0C]/80 px-3 text-xs font-bold text-foreground shadow-[0_0_16px_rgba(239,68,68,0.45)] backdrop-blur transition hover:border-red-400"
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+      <div className="pointer-events-none fixed inset-x-0 top-0 mx-auto max-w-xl space-y-2 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Close reels"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition hover:text-[#FFB800]"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenLive}
+              aria-label={`Open live room (${liveListenerCount} listening)`}
+              className="flex min-h-[38px] items-center gap-2 rounded-full border border-red-500/60 bg-[#0A0A0C]/80 px-3 text-xs font-bold text-foreground shadow-[0_0_16px_rgba(239,68,68,0.45)] backdrop-blur transition hover:border-red-400"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              </span>
+              <span className="tabular-nums">LIVE ({liveListenerCount})</span>
+            </button>
+            <span className="hidden rounded-full bg-[#0A0A0C]/65 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-muted-foreground backdrop-blur sm:inline-flex">
+              {activeIndex + 1}/{displayPosts.length}
             </span>
-            <span className="tabular-nums">LIVE ({liveListenerCount})</span>
-          </button>
+          </div>
+
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onGoLive}
+              className="flex min-h-[38px] items-center gap-1.5 rounded-full bg-[#FFB800] px-3.5 text-xs font-bold text-[#0A0A0C] shadow-[0_0_14px_rgba(255,184,0,0.4)] transition hover:brightness-110 active:scale-95"
+            >
+              <Radio className="h-3.5 w-3.5" />
+              <span>Go LIVE</span>
+            </button>
+            <button
+              type="button"
+              aria-label={muted ? "Unmute" : "Mute"}
+              onClick={() => setMuted(!muted)}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition hover:text-[#FFB800]"
+            >
+              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
 
-        <div className="pointer-events-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onGoLive}
-            className="flex min-h-[38px] items-center gap-1.5 rounded-full bg-[#FFB800] px-3.5 text-xs font-bold text-[#0A0A0C] shadow-[0_0_14px_rgba(255,184,0,0.4)] transition hover:brightness-110 active:scale-95"
-          >
-            <Radio className="h-3.5 w-3.5" />
-            <span>Go LIVE</span>
-          </button>
-          <button
-            type="button"
-            aria-label={muted ? "Unmute" : "Mute"}
-            onClick={() => setMuted(!muted)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0A0C]/70 text-foreground backdrop-blur transition hover:text-[#FFB800]"
-          >
-            {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-          </button>
+        <div className="pointer-events-auto no-scrollbar flex gap-1.5 overflow-x-auto">
+          {FEED_CATEGORIES.map((cat) => {
+            const selected = category === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  setCategory(cat.id);
+                  const nextList =
+                    cat.id === "all" ? posts : posts.filter((p) => p.lane === cat.id);
+                  const first = (nextList.length > 0 ? nextList : posts)[0];
+                  if (first) setActive(first.id);
+                }}
+                className={`min-h-[30px] shrink-0 whitespace-nowrap rounded-full px-3 text-[11px] font-semibold backdrop-blur transition ${
+                  selected
+                    ? "bg-[#FFB800] text-[#0A0A0C]"
+                    : "bg-[#0A0A0C]/65 text-foreground/85 hover:text-[#FFB800]"
+                }`}
+              >
+                {cat.emoji} {cat.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -2179,7 +2634,12 @@ function Reels({
 function Reel({
   post,
   active,
+  shouldMountMedia,
+  isNext,
   muted,
+  onForceMute,
+  following,
+  onToggleFollow,
   onLike,
   onComment,
   onShare,
@@ -2187,7 +2647,12 @@ function Reel({
 }: {
   post: Post;
   active: boolean;
+  shouldMountMedia: boolean;
+  isNext: boolean;
   muted: boolean;
+  onForceMute: () => void;
+  following: boolean;
+  onToggleFollow: () => void;
   onLike: () => void;
   onComment: () => void;
   onShare: () => void;
@@ -2195,43 +2660,61 @@ function Reel({
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const soundAudioRef = useRef<HTMLAudioElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [buffering, setBuffering] = useState(false);
   const [burst, setBurst] = useState(0);
   const lastTap = useRef(0);
+  const onForceMuteRef = useRef(onForceMute);
+  onForceMuteRef.current = onForceMute;
 
+  // Play/pause lifecycle decoupled from mute updates so muting never kicks playback
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    v.playbackRate = post.playbackSpeed ?? 1;
-    v.muted = muted || !!post.soundUrl || !!post.soundYoutubeId;
     if (active && !paused) {
-      void v.play().catch(() => {
-        v.muted = true;
-        void v.play().catch(() => {});
-      });
+      if (v.paused) {
+        void v.play().catch(() => {
+          v.muted = true;
+          onForceMuteRef.current();
+          void v.play().catch(() => {});
+        });
+      }
     } else {
-      v.pause();
+      if (!v.paused) v.pause();
+      setBuffering(false);
     }
     if (!active) {
-      v.currentTime = 0;
+      if (v.currentTime > 0) v.currentTime = 0;
+      if (progressBarRef.current) progressBarRef.current.style.width = "0%";
       setPaused(false);
     }
-  }, [active, paused, muted, post.soundUrl, post.soundYoutubeId, post.playbackSpeed]);
+  }, [active, paused, shouldMountMedia]);
 
   useEffect(() => {
     const sa = soundAudioRef.current;
     if (!sa) return;
-    sa.muted = muted;
     if (active && !paused && !muted) {
-      void sa.play().catch(() => {});
-    } else {
+      if (sa.paused) void sa.play().catch(() => {});
+    } else if (!sa.paused) {
       sa.pause();
     }
-    if (!active) {
+    if (!active && sa.currentTime > 0) {
       sa.currentTime = 0;
     }
-  }, [active, paused, muted, post.soundUrl]);
+  }, [active, paused, muted, post.soundUrl, shouldMountMedia]);
+
+  useEffect(() => {
+    const v = ref.current;
+    if (v) {
+      v.playbackRate = post.playbackSpeed ?? 1;
+      v.muted = muted || !!post.soundUrl || !!post.soundYoutubeId;
+    }
+    const sa = soundAudioRef.current;
+    if (sa) {
+      sa.muted = muted;
+    }
+  }, [muted, post.soundUrl, post.soundYoutubeId, post.playbackSpeed, shouldMountMedia]);
 
   const tap = () => {
     const now = Date.now();
@@ -2252,7 +2735,14 @@ function Reel({
       data-id={post.id}
       className="relative h-dvh w-full snap-start snap-always overflow-hidden bg-[#0A0A0C]"
     >
-      {post.soundUrl && <audio ref={soundAudioRef} src={post.soundUrl} loop preload="none" />}
+      {shouldMountMedia && post.soundUrl && (
+        <audio
+          ref={soundAudioRef}
+          src={post.soundUrl}
+          loop
+          preload={active ? "auto" : "metadata"}
+        />
+      )}
       {!post.soundUrl && post.soundYoutubeId && active && !paused && !muted && (
         <iframe
           key={post.soundYoutubeId}
@@ -2263,20 +2753,30 @@ function Reel({
         />
       )}
       {post.mediaIsVideo || post.video ? (
-        <video
-          ref={ref}
-          src={post.video ?? post.media}
-          muted={muted || !!post.soundUrl || !!post.soundYoutubeId}
-          loop
-          playsInline
-          preload="metadata"
-          onClick={tap}
-          onTimeUpdate={(e) =>
-            setProgress((e.currentTarget.currentTime / (e.currentTarget.duration || 1)) * 100)
-          }
-          style={post.filterCss ? { filter: post.filterCss } : undefined}
-          className={`h-full w-full object-cover ${post.filterCss ? "" : (post.filterClass ?? "")}`}
-        />
+        shouldMountMedia ? (
+          <video
+            ref={ref}
+            src={post.video ?? post.media}
+            muted={muted || !!post.soundUrl || !!post.soundYoutubeId}
+            loop
+            playsInline
+            preload={active || isNext ? "auto" : "metadata"}
+            onClick={tap}
+            onWaiting={() => setBuffering(true)}
+            onPlaying={() => setBuffering(false)}
+            onCanPlay={() => setBuffering(false)}
+            onTimeUpdate={(e) => {
+              if (progressBarRef.current) {
+                const pct = (e.currentTarget.currentTime / (e.currentTarget.duration || 1)) * 100;
+                progressBarRef.current.style.width = `${pct}%`;
+              }
+            }}
+            style={post.filterCss ? { filter: post.filterCss } : undefined}
+            className={`h-full w-full object-cover ${post.filterCss ? "" : (post.filterClass ?? "")}`}
+          />
+        ) : (
+          <div onClick={tap} className="h-full w-full bg-[#0A0A0C]" />
+        )
       ) : post.media ? (
         <img
           src={post.media}
@@ -2300,6 +2800,11 @@ function Reel({
         stickers={post.stickers}
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0A0A0C]/90 via-transparent to-[#0A0A0C]/35" />
+      {active && !paused && buffering && (
+        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0A0A0C]/65 p-3 backdrop-blur">
+          <Loader2 className="h-7 w-7 animate-spin text-[#FFB800]" />
+        </div>
+      )}
       {paused && (
         <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#0A0A0C]/65 backdrop-blur">
           <Play className="ml-1 h-9 w-9 fill-foreground" />
@@ -2322,6 +2827,20 @@ function Reel({
           />
           <span className="font-semibold">{post.user.handle}</span>
           {post.user.verified && <BadgeCheck className="h-4 w-4 fill-[#FFB800] text-[#0A0A0C]" />}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFollow();
+            }}
+            className={`ml-1 rounded-full px-3 py-1 text-xs font-semibold transition active:scale-95 ${
+              following
+                ? "border border-[#222228] bg-[#141418]/80 text-foreground/90 backdrop-blur"
+                : "bg-[#FFB800] text-[#0A0A0C] hover:brightness-110"
+            }`}
+          >
+            {following ? "Following ✓" : "Follow"}
+          </button>
         </div>
         <p className="text-sm">
           {post.caption} {post.tag && <span className="text-[#FFB800]">{post.tag}</span>}
@@ -2329,13 +2848,17 @@ function Reel({
         <div className="flex max-w-xs items-center gap-2 rounded-full bg-[#0A0A0C]/55 px-3 py-1 text-xs text-foreground/90 backdrop-blur">
           <Music className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
           <div className="min-w-0 flex-1 overflow-hidden">
-            <div className="flex w-max whitespace-nowrap animate-marquee">
+            <div
+              className={`flex w-max whitespace-nowrap ${active && !paused ? "animate-marquee" : ""}`}
+            >
               <span className="pr-8">
                 🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
               </span>
-              <span aria-hidden="true" className="pr-8">
-                🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
-              </span>
+              {active && !paused && (
+                <span aria-hidden="true" className="pr-8">
+                  🎵 {post.track ?? `Original Audio — ${post.user.handle}`}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -2390,7 +2913,7 @@ function Reel({
         </div>
       </div>
       <div className="absolute inset-x-0 bottom-0 h-1 bg-foreground/20">
-        <div className="h-full bg-[#FFB800]" style={{ width: `${progress}%` }} />
+        <div ref={progressBarRef} className="h-full bg-[#FFB800]" style={{ width: "0%" }} />
       </div>
     </section>
   );

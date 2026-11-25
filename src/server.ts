@@ -1,5 +1,6 @@
 import "./lib/error-capture";
 
+import { GoogleGenAI, Type } from "@google/genai";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
@@ -365,6 +366,134 @@ async function handleMusicSearch(url: URL): Promise<Response> {
   });
 }
 
+const TONE_GUIDES: Record<string, string> = {
+  hype: "High energy, bold, modern street culture slang, exciting and viral without cringe.",
+  chill: "Relaxed, late-night luxury aesthetic, smooth, minimal, warm and effortless.",
+  deep: "Thoughtful, poetic, artistic reflection, grounded and introspective.",
+  witty: "Clever, sharp humor, relatable punchline, confident and punchy.",
+};
+
+async function handleAiCaptions(request: Request): Promise<Response> {
+  if (request.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  const apiKey = process.env["GEMINI_API_KEY"]?.trim();
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({
+        error: "AI caption polish is waiting for GEMINI_API_KEY in Settings > Secrets.",
+      }),
+      {
+        status: 503,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  }
+
+  let body: { roughIdea?: unknown; tone?: unknown; mediaType?: unknown; category?: unknown };
+  try {
+    body = (await request.json()) as {
+      roughIdea?: unknown;
+      tone?: unknown;
+      mediaType?: unknown;
+      category?: unknown;
+    };
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body." }), {
+      status: 400,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  const roughIdea = typeof body.roughIdea === "string" ? body.roughIdea.trim().slice(0, 280) : "";
+  if (!roughIdea) {
+    return new Response(JSON.stringify({ error: "Type a rough idea first so AI can polish it." }), {
+      status: 400,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  const toneKey = typeof body.tone === "string" && TONE_GUIDES[body.tone] ? body.tone : "hype";
+  const mediaType = typeof body.mediaType === "string" ? body.mediaType.slice(0, 32) : "video";
+  const category = typeof body.category === "string" ? body.category.slice(0, 32) : "general";
+
+  try {
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-4-hydrogen",
+      contents: `Rough idea for a ${mediaType} post in the "${category}" lane:\n"${roughIdea}"\n\nRequested tone: ${TONE_GUIDES[toneKey]}`,
+      config: {
+        systemInstruction:
+          "You are the creative caption engine for tumeni., a dark-luxury social platform for comedy, amapiano, daily vlogs, sports, and music creators. Generate exactly 3 distinct, captivating captions. Each caption must stay under 140 characters and end with 2 or 3 relevant hashtags including #tumeni.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            captions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Exactly 3 polished social media captions with 2-3 hashtags each.",
+            },
+          },
+          required: ["captions"],
+        },
+      },
+    });
+
+    const rawText = (response.text ?? "{}").trim();
+    const parsed = JSON.parse(rawText) as { captions?: unknown };
+    const captions = Array.isArray(parsed.captions)
+      ? parsed.captions
+          .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .map((item) => item.trim())
+          .slice(0, 3)
+      : [];
+
+    if (captions.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "AI did not return any caption suggestions. Try again." }),
+        {
+          status: 502,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        },
+      );
+    }
+
+    return new Response(JSON.stringify({ ok: true, captions }), {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  } catch (err) {
+    console.error("AI caption generation failed:", err);
+    const rawMsg = err instanceof Error ? err.message : "";
+    const friendly =
+      rawMsg.includes("API_KEY_INVALID") || rawMsg.includes("API key not valid")
+        ? "AI caption polish needs a valid GEMINI_API_KEY in Settings > Secrets."
+        : rawMsg || "Failed to generate captions right now.";
+    return new Response(
+      JSON.stringify({
+        error: friendly,
+      }),
+      {
+        status: 502,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+  }
+}
+
 // Hosting compresses every response at the edge. Never compress a body (gzip, brotli,
 // CompressionStream) or set content-encoding here or in a server route: the body gets encoded
 // twice and renders garbled.
@@ -374,6 +503,9 @@ export default {
       const url = new URL(request.url);
       if (url.pathname === "/api/music/search") {
         return await handleMusicSearch(url);
+      }
+      if (url.pathname === "/api/ai/captions") {
+        return await handleAiCaptions(request);
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

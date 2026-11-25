@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { INTERESTS, profileError, readSetup, testIdentity, toggleSelection } from "./onboarding";
+import {
+  INTERESTS,
+  normalizeCity,
+  profileError,
+  readSetup,
+  testIdentity,
+  toggleSelection,
+} from "./onboarding";
 
 describe("test onboarding", () => {
   it("accepts any test email with a password without verification", () => {
@@ -55,5 +62,24 @@ describe("test onboarding", () => {
     };
     expect(readSetup(JSON.stringify(profile))?.following).toEqual(["real-person"]);
     expect(readSetup(JSON.stringify(profile))?.friends).toEqual(["real-friend"]);
+  });
+  it("normalizes user city/location for Near You discovery", () => {
+    expect(normalizeCity("  Johannesburg, South Africa  ")).toEqual({
+      location: "Johannesburg, South Africa",
+      city: "Johannesburg",
+      cityLower: "johannesburg",
+    });
+    const withCity = {
+      name: "Nala",
+      handle: "@nala",
+      avatar: "",
+      bio: "",
+      location: "Cape Town",
+      city: "Cape Town",
+      interests: ["Trending"],
+      following: [],
+      friends: [],
+    };
+    expect(readSetup(JSON.stringify(withCity))?.city).toBe("Cape Town");
   });
 });

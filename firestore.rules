@@ -1,0 +1,264 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidStringList(listVal, maxLen) {
+      return listVal is list
+        && listVal.size() <= maxLen
+        && (listVal.size() == 0 || listVal[0] is string);
+    }
+
+    function isValidProfile(data, uid) {
+      return data.keys().hasAll([
+          'uid', 'name', 'handle', 'handleLower', 'avatar', 'bio',
+          'location', 'city', 'cityLower', 'vibeTag', 'interests',
+          'isPublicProfile', 'followersCount', 'followingCount',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'name', 'handle', 'handleLower', 'avatar', 'bio',
+          'location', 'city', 'cityLower', 'vibeTag', 'interests',
+          'isPublicProfile', 'followersCount', 'followingCount',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == uid && isValidId(data.uid)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 50
+        && data.handle is string && data.handle.size() >= 3 && data.handle.size() <= 25
+        && data.handle.matches('^@[a-zA-Z0-9_.]{2,24}$')
+        && data.handleLower is string && data.handleLower.size() >= 3 && data.handleLower.size() <= 25
+        && data.avatar is string && data.avatar.size() <= 100000
+        && data.bio is string && data.bio.size() <= 160
+        && data.location is string && data.location.size() <= 80
+        && data.city is string && data.city.size() <= 60
+        && data.cityLower is string && data.cityLower.size() <= 60
+        && data.vibeTag is string && data.vibeTag.size() <= 40
+        && isValidStringList(data.interests, 10)
+        && data.isPublicProfile is bool && data.isPublicProfile == true
+        && data.followersCount is int && data.followersCount >= 0
+        && data.followingCount is int && data.followingCount >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateAccount(data, uid) {
+      return data.keys().hasAll([
+          'uid', 'email', 'following', 'friends', 'likedIds', 'savedIds', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'following', 'friends', 'likedIds', 'savedIds', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == uid && isValidId(data.uid)
+        && data.email is string && data.email.size() <= 254
+        && isValidStringList(data.following, 500)
+        && isValidStringList(data.friends, 500)
+        && isValidStringList(data.likedIds, 500)
+        && isValidStringList(data.savedIds, 500)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPost(data, postId) {
+      return data.keys().hasAll([
+          'id', 'authorUid', 'authorName', 'authorHandle', 'authorAvatar',
+          'lane', 'kind', 'audience', 'caption', 'likesCount', 'sharesCount',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'authorUid', 'authorName', 'authorHandle', 'authorAvatar',
+          'lane', 'kind', 'audience', 'caption', 'tag', 'track', 'soundUrl',
+          'soundYoutubeId', 'media', 'isVideo', 'filterClass', 'filterCss',
+          'effectId', 'playbackSpeed', 'mood', 'likesCount', 'sharesCount',
+          'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == postId && isValidId(data.id)
+        && data.authorUid is string && isValidId(data.authorUid)
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 50
+        && data.authorHandle is string && data.authorHandle.size() >= 3 && data.authorHandle.size() <= 25
+        && data.authorAvatar is string && data.authorAvatar.size() <= 100000
+        && data.lane in ['circle', 'laughs', 'amapiano', 'vlog', 'sports', 'music', 'mix']
+        && data.kind in ['video', 'photo', 'audio', 'text']
+        && data.audience in ['public', 'friends', 'private']
+        && data.caption is string && data.caption.size() <= 500
+        && (!('tag' in data) || (data.tag is string && data.tag.size() <= 160))
+        && (!('track' in data) || (data.track is string && data.track.size() <= 160))
+        && (!('soundUrl' in data) || (data.soundUrl is string && data.soundUrl.size() <= 1024))
+        && (!('soundYoutubeId' in data) || (data.soundYoutubeId is string && data.soundYoutubeId.size() <= 64))
+        && (!('media' in data) || (data.media is string && data.media.size() <= 150000))
+        && (!('isVideo' in data) || data.isVideo is bool)
+        && (!('filterClass' in data) || (data.filterClass is string && data.filterClass.size() <= 160))
+        && (!('filterCss' in data) || (data.filterCss is string && data.filterCss.size() <= 200))
+        && (!('effectId' in data) || (data.effectId is string && data.effectId.size() <= 64))
+        && (!('playbackSpeed' in data) || (data.playbackSpeed is number && data.playbackSpeed >= 0.25 && data.playbackSpeed <= 4))
+        && (!('mood' in data) || (data.mood is string && data.mood.size() <= 64))
+        && data.likesCount is int && data.likesCount >= 0
+        && data.sharesCount is int && data.sharesCount >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFollow(data) {
+      return data.keys().hasAll(['followerUid', 'targetUid', 'createdAt'])
+        && data.keys().hasOnly(['followerUid', 'targetUid', 'createdAt'])
+        && data.followerUid is string && isValidId(data.followerUid)
+        && data.targetUid is string && isValidId(data.targetUid)
+        && data.createdAt is timestamp;
+    }
+
+    // Public searchable creator directory (zero PII)
+    match /profiles/{uid} {
+      allow get: if isSignedIn() && isValidId(uid) && (isOwner(uid) || existing().isPublicProfile == true);
+      allow list: if isSignedIn() && resource.data.isPublicProfile == true;
+      allow create: if isVerified()
+        && isValidId(uid)
+        && isOwner(uid)
+        && isValidProfile(incoming(), uid)
+        && incoming().followersCount == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(uid)
+        && isValidProfile(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Owner updates profile details
+          (isOwner(uid)
+            && incoming().followersCount == existing().followersCount
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'handle', 'handleLower', 'avatar', 'bio',
+              'location', 'city', 'cityLower', 'vibeTag', 'interests',
+              'followingCount', 'updatedAt'
+            ]))
+          ||
+          // Action: Verified user atomically updates followersCount alongside /follows/{caller_target}
+          (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount', 'updatedAt'])
+            && (
+              (incoming().followersCount == existing().followersCount + 1
+                && !exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid))
+                && existsAfter(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid)))
+              ||
+              (incoming().followersCount == existing().followersCount - 1
+                && exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid))
+                && !existsAfter(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid)))
+            ))
+        );
+      allow delete: if isVerified() && isValidId(uid) && isOwner(uid);
+    }
+
+    // Private PII & personal social lists
+    match /users/{uid}/private/{docId} {
+      allow get: if isSignedIn() && isValidId(uid) && isValidId(docId) && isOwner(uid);
+      allow list: if false;
+      allow create: if isVerified()
+        && isValidId(uid)
+        && isValidId(docId)
+        && isOwner(uid)
+        && docId == 'account'
+        && isValidPrivateAccount(incoming(), uid)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(uid)
+        && isValidId(docId)
+        && isOwner(uid)
+        && docId == 'account'
+        && isValidPrivateAccount(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'email', 'following', 'friends', 'likedIds', 'savedIds', 'updatedAt'
+        ]);
+      allow delete: if isVerified() && isValidId(uid) && isValidId(docId) && isOwner(uid) && docId == 'account';
+    }
+
+    // Social drops & posts
+    match /posts/{postId} {
+      allow get: if isSignedIn()
+        && isValidId(postId)
+        && (existing().audience == 'public' || existing().authorUid == request.auth.uid);
+      allow list: if isSignedIn()
+        && (resource.data.audience == 'public' || resource.data.authorUid == request.auth.uid);
+      allow create: if isVerified()
+        && isValidId(postId)
+        && isValidPost(incoming(), postId)
+        && incoming().authorUid == request.auth.uid
+        && incoming().likesCount == 0
+        && incoming().sharesCount == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(postId)
+        && isValidPost(incoming(), postId)
+        && incoming().id == existing().id
+        && incoming().authorUid == existing().authorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Author edits drop metadata
+          (existing().authorUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'caption', 'tag', 'audience', 'lane', 'authorName', 'authorHandle', 'authorAvatar', 'updatedAt'
+            ]))
+          ||
+          // Action: Like / unlike counter
+          (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'updatedAt'])
+            && (incoming().likesCount == existing().likesCount + 1
+              || incoming().likesCount == existing().likesCount - 1))
+          ||
+          // Action: Share counter
+          (incoming().diff(existing()).affectedKeys().hasOnly(['sharesCount', 'updatedAt'])
+            && incoming().sharesCount == existing().sharesCount + 1)
+        );
+      allow delete: if isVerified() && isValidId(postId) && existing().authorUid == request.auth.uid;
+    }
+
+    // Directed follow relationships
+    match /follows/{followId} {
+      allow get: if isSignedIn()
+        && isValidId(followId)
+        && (existing().followerUid == request.auth.uid || existing().targetUid == request.auth.uid);
+      allow list: if isSignedIn()
+        && (resource.data.followerUid == request.auth.uid || resource.data.targetUid == request.auth.uid);
+      allow create: if isVerified()
+        && isValidId(followId)
+        && isValidFollow(incoming())
+        && followId == incoming().followerUid + '_' + incoming().targetUid
+        && incoming().followerUid == request.auth.uid
+        && incoming().targetUid != request.auth.uid
+        && exists(/databases/$(database)/documents/profiles/$(incoming().targetUid))
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isVerified() && isValidId(followId) && existing().followerUid == request.auth.uid;
+    }
+  }
+}

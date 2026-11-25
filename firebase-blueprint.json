@@ -1,0 +1,319 @@
+{
+  "entities": {
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Public creator profile used for Circle Radar, location-based Near You discovery, and profile search. Contains zero PII.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the profile owner.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Public display name.",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "handle": {
+          "type": "string",
+          "description": "Public @handle.",
+          "minLength": 3,
+          "maxLength": 25,
+          "pattern": "^@[a-zA-Z0-9_.]{2,24}$"
+        },
+        "handleLower": {
+          "type": "string",
+          "description": "Lowercase @handle for case-insensitive search.",
+          "minLength": 3,
+          "maxLength": 25
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Public avatar image URL or compact data URL.",
+          "maxLength": 100000
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short creator bio.",
+          "maxLength": 160
+        },
+        "location": {
+          "type": "string",
+          "description": "User-entered city or vibe zone.",
+          "maxLength": 80
+        },
+        "city": {
+          "type": "string",
+          "description": "Normalized city name for People Near You matching.",
+          "maxLength": 60
+        },
+        "cityLower": {
+          "type": "string",
+          "description": "Lowercase normalized city name for indexed queries.",
+          "maxLength": 60
+        },
+        "vibeTag": {
+          "type": "string",
+          "description": "Primary creator vibe hashtag.",
+          "maxLength": 40
+        },
+        "interests": {
+          "type": "array",
+          "description": "Selected Tumeni interest categories (max 10)."
+        },
+        "isPublicProfile": {
+          "type": "boolean",
+          "description": "Explicit directory visibility marker."
+        },
+        "followersCount": {
+          "type": "number",
+          "description": "Count of followers."
+        },
+        "followingCount": {
+          "type": "number",
+          "description": "Count of followed creators."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-update timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "handle",
+        "handleLower",
+        "avatar",
+        "bio",
+        "location",
+        "city",
+        "cityLower",
+        "vibeTag",
+        "interests",
+        "isPublicProfile",
+        "followersCount",
+        "followingCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PrivateAccount": {
+      "title": "PrivateAccount",
+      "description": "Owner-only private account record storing email PII and personal social graph state.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "following": {
+          "type": "array",
+          "description": "Followed user IDs (max 500)."
+        },
+        "friends": {
+          "type": "array",
+          "description": "Friend user IDs (max 500)."
+        },
+        "likedIds": {
+          "type": "array",
+          "description": "Liked post IDs (max 500)."
+        },
+        "savedIds": {
+          "type": "array",
+          "description": "Saved post IDs (max 500)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "following",
+        "friends",
+        "likedIds",
+        "savedIds",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SocialPost": {
+      "title": "SocialPost",
+      "description": "User-created social drop across video, photo, audio, and status posts.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "authorHandle": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 25
+        },
+        "authorAvatar": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "lane": {
+          "type": "string",
+          "enum": ["circle", "laughs", "amapiano", "vlog", "sports", "music", "mix"]
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["video", "photo", "audio", "text"]
+        },
+        "audience": {
+          "type": "string",
+          "enum": ["public", "friends", "private"]
+        },
+        "caption": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "tag": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "track": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "soundUrl": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "soundYoutubeId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "media": {
+          "type": "string",
+          "maxLength": 150000
+        },
+        "isVideo": {
+          "type": "boolean"
+        },
+        "filterClass": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "filterCss": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "effectId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "playbackSpeed": {
+          "type": "number"
+        },
+        "mood": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "likesCount": {
+          "type": "number"
+        },
+        "sharesCount": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "authorUid",
+        "authorName",
+        "authorHandle",
+        "authorAvatar",
+        "lane",
+        "kind",
+        "audience",
+        "caption",
+        "likesCount",
+        "sharesCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FollowEdge": {
+      "title": "FollowEdge",
+      "description": "Directed follow relationship edge keyed deterministically as {followerUid}_{targetUid}.",
+      "type": "object",
+      "properties": {
+        "followerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "targetUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["followerUid", "targetUid", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/profiles/{uid}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Public discoverable creator profiles (no PII)."
+    },
+    "/users/{uid}/private/{docId}": {
+      "schema": { "$ref": "#/entities/PrivateAccount" },
+      "description": "Owner-only private account data containing email and personal lists."
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/SocialPost" },
+      "description": "User-published drops across public, friends, and private audiences."
+    },
+    "/follows/{followId}": {
+      "schema": { "$ref": "#/entities/FollowEdge" },
+      "description": "Directed social follow edges between authenticated users."
+    }
+  }
+}

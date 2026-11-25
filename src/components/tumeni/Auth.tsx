@@ -1,28 +1,42 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Camera,
   Check,
   Eye,
   EyeOff,
   Flame,
   Gamepad2,
   Laugh,
+  Loader2,
+  MailCheck,
+  MapPin,
   Music,
-  Camera,
   Trophy,
 } from "lucide-react";
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+} from "firebase/auth";
 import { Button } from "@/components/ui/button";
+import { auth, googleProvider } from "@/lib/firebase";
+import { fetchCloudProfile, saveCloudProfile } from "@/lib/tumeni-db";
 import { LogoMark, Wordmark } from "./Logo";
 import {
   INTERESTS,
+  POPULAR_CITIES,
+  compressAvatarFile,
+  normalizeCity,
   profileError,
   readSetup,
-  testIdentity,
   toggleSelection,
   type SetupProfile,
 } from "./onboarding";
-import { loadAllAccounts, type AccountRecord } from "./storage";
 
 const G = () => (
   <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden="true">
@@ -52,10 +66,52 @@ const empty: SetupProfile = {
   handle: "",
   avatar: "",
   bio: "",
+  location: "",
+  city: "",
   interests: [],
   following: [],
   friends: [],
 };
+
+function sanitizeHandle(raw: string): string {
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_.]/g, "")
+    .slice(0, 22);
+  return cleaned.length >= 2 ? cleaned : `tumeni.${Math.floor(100 + Math.random() * 900)}`;
+}
+
+function formatAuthError(err: unknown): string {
+  const code =
+    typeof err === "object" && err !== null && "code" in err
+      ? String((err as { code?: string }).code ?? "")
+      : "";
+  switch (code) {
+    case "auth/operation-not-allowed":
+      return "Email/Password sign-in is not enabled yet in Firebase Console (Authentication → Sign-in method). Enable it there or use Google Sign-In above.";
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "Incorrect email or password. Double-check your details or try Forgot password.";
+    case "auth/email-already-in-use":
+      return "An account with this email already exists. Switch to Sign In to continue.";
+    case "auth/weak-password":
+      return "Password must be at least 6 characters.";
+    case "auth/invalid-email":
+      return "Enter a valid email address.";
+    case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
+      return "Google sign-in popup was closed before completing.";
+    case "auth/popup-blocked":
+      return "Your browser blocked the Google sign-in popup. Allow popups for this site and try again.";
+    case "auth/too-many-requests":
+      return "Too many attempts right now. Wait a minute and try again.";
+    default:
+      return err instanceof Error && err.message
+        ? err.message
+        : "Authentication failed. Please try again.";
+  }
+}
 
 export function Auth({
   onLogin,
@@ -64,37 +120,247 @@ export function Auth({
   onLogin: (id: string, profile: SetupProfile) => void;
   initialAccount?: string | null;
 }) {
-  const [step, setStep] = useState(initialAccount ? 1 : 0);
-  const [account, setAccount] = useState(initialAccount ?? "");
-  const [mode, setMode] = useState<"email" | "phone">("email");
-  const [value, setValue] = useState("");
+  const currentUser = auth.currentUser;
+  const startNeedsVerify = Boolean(currentUser && !currentUser.emailVerified);
+  const startAtOnboarding = Boolean(initialAccount && currentUser && currentUser.emailVerified);
+
+  const [step, setStep] = useState(startAtOnboarding ? 1 : 0);
+  const [account, setAccount] = useState(initialAccount ?? currentUser?.uid ?? "");
+  const [authTab, setAuthTab] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState(currentUser?.email ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [profile, setProfile] = useState<SetupProfile>(empty);
+  const [needsVerification, setNeedsVerification] = useState(startNeedsVerify);
+  const [infoMsg, setInfoMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [profile, setProfile] = useState<SetupProfile>(() => {
+    if (startAtOnboarding && currentUser) {
+      const baseName =
+        currentUser.displayName?.trim() || currentUser.email?.split("@")[0] || "Creator";
+      return {
+        ...empty,
+        name: baseName.slice(0, 50),
+        handle: sanitizeHandle(currentUser.email?.split("@")[0] || baseName),
+      };
+    }
+    return empty;
+  });
   const [error, setError] = useState("");
   const [avatarBusy, setAvatarBusy] = useState(false);
-  const [savedAccounts] = useState<AccountRecord[]>(() => loadAllAccounts());
   const upload = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const fbUser = auth.currentUser;
+    if (initialAccount && fbUser) {
+      setAccount(fbUser.uid);
+      if (fbUser.emailVerified && step === 0 && !needsVerification) {
+        setProfile((prev) => ({
+          ...prev,
+          name: prev.name || fbUser.displayName?.trim() || fbUser.email?.split("@")[0] || "",
+          handle:
+            prev.handle ||
+            sanitizeHandle(fbUser.email?.split("@")[0] || fbUser.displayName || "creator"),
+        }));
+        setStep(1);
+      } else if (!fbUser.emailVerified) {
+        setNeedsVerification(true);
+        setStep(0);
+      }
+    }
+  }, [initialAccount, step, needsVerification]);
 
   const next = () => {
     setError("");
+    setInfoMsg("");
     setStep((s) => s + 1);
     window.scrollTo(0, 0);
   };
-  const enter = (id: string) => {
+
+  const hydrateOrStartOnboarding = async (
+    uid: string,
+    userEmail: string,
+    displayName?: string | null,
+  ) => {
     try {
-      const existing = readSetup(localStorage.getItem(`tumeni-setup:${id}`));
-      if (existing) {
-        onLogin(id, existing);
+      const cloud = await fetchCloudProfile(uid);
+      if (cloud?.profile) {
+        onLogin(uid, cloud.profile);
         return;
       }
     } catch {
-      /* Continue with fresh setup. */
+      /* Check local backup or proceed to onboarding. */
     }
-    setAccount(id);
+
+    try {
+      const localBackup = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
+      if (localBackup) {
+        await saveCloudProfile(uid, userEmail, localBackup);
+        onLogin(uid, localBackup);
+        return;
+      }
+    } catch {
+      /* Continue to fresh profile setup. */
+    }
+
+    const fallbackName = displayName?.trim() || userEmail.split("@")[0] || "";
+    setAccount(uid);
     setPassword("");
-    next();
+    setNeedsVerification(false);
+    setProfile((prev) => ({
+      ...prev,
+      name: prev.name || fallbackName.slice(0, 50),
+      handle: prev.handle || sanitizeHandle(userEmail.split("@")[0] || fallbackName),
+    }));
+    setStep(1);
+    window.scrollTo(0, 0);
   };
+
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setInfoMsg("");
+    setBusy(true);
+    try {
+      const cred = await signInWithPopup(auth, googleProvider);
+      await hydrateOrStartOnboarding(cred.user.uid, cred.user.email ?? "", cred.user.displayName);
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) return;
+
+    setError("");
+    setInfoMsg("");
+    setBusy(true);
+    try {
+      if (authTab === "signin") {
+        const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        if (!cred.user.emailVerified) {
+          setAccount(cred.user.uid);
+          setNeedsVerification(true);
+          setInfoMsg("Verify your email first to activate your cloud profile.");
+          return;
+        }
+        await hydrateOrStartOnboarding(
+          cred.user.uid,
+          cred.user.email ?? cleanEmail,
+          cred.user.displayName,
+        );
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        setAccount(cred.user.uid);
+        try {
+          await sendEmailVerification(cred.user);
+        } catch {
+          /* Verification email might be rate-limited; user can click resend. */
+        }
+        setNeedsVerification(true);
+        setInfoMsg(`We sent a verification link to ${cleanEmail}.`);
+      }
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError("Enter your email address above first so we can send a reset link.");
+      return;
+    }
+    setError("");
+    setInfoMsg("");
+    setBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setInfoMsg(`Password reset email sent to ${cleanEmail}.`);
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!auth.currentUser) return;
+    setError("");
+    setInfoMsg("");
+    setBusy(true);
+    try {
+      await sendEmailVerification(auth.currentUser);
+      setInfoMsg("Verification link resent. Check your inbox and spam folder.");
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCheckVerified = async () => {
+    if (!auth.currentUser) return;
+    setError("");
+    setInfoMsg("");
+    setBusy(true);
+    try {
+      await auth.currentUser.reload();
+      const refreshed = auth.currentUser;
+      if (refreshed?.emailVerified) {
+        await hydrateOrStartOnboarding(
+          refreshed.uid,
+          refreshed.email ?? email,
+          refreshed.displayName,
+        );
+      } else {
+        setError("Email is not verified yet. Open the link in your inbox, then tap Continue.");
+      }
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleFinishOnboarding = async () => {
+    const uid = auth.currentUser?.uid || account;
+    if (!uid) {
+      setStep(0);
+      setError("Please sign in again to finish creating your profile.");
+      return;
+    }
+
+    const { location, city } = normalizeCity(profile.location ?? profile.city ?? "");
+    const finalProfile: SetupProfile = {
+      ...profile,
+      name: profile.name.trim(),
+      handle: `@${profile.handle.replace(/^@/, "")}`,
+      bio: profile.bio.trim(),
+      location,
+      city,
+    };
+
+    setBusy(true);
+    setError("");
+    try {
+      await saveCloudProfile(uid, auth.currentUser?.email ?? email, finalProfile);
+      onLogin(uid, finalProfile);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? "Could not save your profile to the cloud right now. Please try again."
+          : "Could not save your profile.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const select = (key: "interests" | "following" | "friends", id: string) =>
     setProfile((p) => ({ ...p, [key]: toggleSelection(p[key], id) }));
 
@@ -138,7 +404,11 @@ export function Auth({
           <h1 className="text-3xl font-semibold sm:text-4xl">
             {
               [
-                "Find your circle.",
+                needsVerification
+                  ? "Check your inbox."
+                  : authTab === "signin"
+                    ? "Sign in to tumeni."
+                    : "Create your account.",
                 "Make it yours.",
                 "What’s your vibe?",
                 "Good company starts here.",
@@ -148,80 +418,108 @@ export function Auth({
           <p className="mb-8 mt-3 text-sm leading-relaxed text-muted-foreground">
             {
               [
-                "A place for your people, your stories and everything in between.",
-                "Upload your own photo and pick the name your circle knows you by.",
+                needsVerification
+                  ? "Verify your email address so your account and circle stay synced across sessions."
+                  : authTab === "signin"
+                    ? "Welcome back. Your circle, saved drops, and profile stay synced in the cloud."
+                    : "Join tumeni. with a real account synced across sessions.",
+                "Upload your photo, set your city for local discovery, and pick your @handle.",
                 "Pick the things you love.",
                 "Your feed, reels, and circle are ready.",
               ][step]
             }
           </p>
 
-          {step === 0 && (
+          {step === 0 && !needsVerification && (
             <>
               <Button
+                type="button"
                 variant="outline"
-                onClick={() => enter("google:you@gmail.com")}
+                disabled={busy}
+                onClick={() => void handleGoogleSignIn()}
                 className="google-signin h-12 w-full gap-[10px] rounded-lg px-3 text-sm [&_svg]:size-[18px]"
               >
-                <G />
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <G />}
                 Continue with Google
               </Button>
+
               <div className="my-6 flex items-center gap-4 text-xs text-muted-foreground">
                 <span className="h-px flex-1 bg-[#222228]" />
-                or continue with
+                or use email &amp; password
                 <span className="h-px flex-1 bg-[#222228]" />
               </div>
+
               <div
-                className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-[#222228] p-1"
-                role="group"
-                aria-label="Sign-in method"
+                className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-[#222228] bg-[#141418] p-1"
+                role="tablist"
+                aria-label="Authentication mode"
               >
-                {(["email", "phone"] as const).map((m) => (
+                {(
+                  [
+                    { id: "signin", label: "Sign In" },
+                    { id: "signup", label: "Create Account" },
+                  ] as const
+                ).map((t) => (
                   <Button
-                    key={m}
-                    variant={mode === m ? "secondary" : "ghost"}
-                    aria-pressed={mode === m}
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={authTab === t.id}
+                    variant={authTab === t.id ? "secondary" : "ghost"}
                     onClick={() => {
-                      setMode(m);
-                      setValue("");
+                      setAuthTab(t.id);
+                      setError("");
+                      setInfoMsg("");
                     }}
-                    className="capitalize"
+                    className={
+                      authTab === t.id
+                        ? "bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                        : "text-muted-foreground hover:text-foreground"
+                    }
                   >
-                    {m === "phone" ? "Phone number" : "Email"}
+                    {t.label}
                   </Button>
                 ))}
               </div>
-              <form
-                className="space-y-5"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const id = testIdentity(mode, value, password);
-                  if (id) enter(id);
-                }}
-              >
+
+              <form className="space-y-4" onSubmit={(e) => void handleEmailAuth(e)}>
                 <label className="block space-y-2 text-sm font-medium">
-                  <span>{mode === "phone" ? "Phone number" : "Email address"}</span>
+                  <span>Email address</span>
                   <input
                     className={field}
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    type={mode === "phone" ? "tel" : "text"}
-                    inputMode={mode === "phone" ? "tel" : "email"}
-                    autoComplete={mode === "phone" ? "tel" : "email"}
-                    placeholder={mode === "phone" ? "+1 555 010 2030" : "you@example.com"}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
                     required
                   />
                 </label>
                 <label className="block space-y-2 text-sm font-medium">
-                  <span>Password</span>
+                  <div className="flex items-center justify-between">
+                    <span>Password</span>
+                    {authTab === "signin" && (
+                      <button
+                        type="button"
+                        onClick={() => void handleResetPassword()}
+                        className="text-xs font-medium text-[#FFB800] hover:underline"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <input
                       className={`${field} pr-12`}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      placeholder="Enter a test password"
+                      autoComplete={authTab === "signin" ? "current-password" : "new-password"}
+                      placeholder={
+                        authTab === "signin" ? "Enter your password" : "At least 6 characters"
+                      }
+                      minLength={6}
                       required
                     />
                     <Button
@@ -236,62 +534,133 @@ export function Auth({
                     </Button>
                   </div>
                 </label>
+
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400"
+                  >
+                    {error}
+                  </p>
+                )}
+                {infoMsg && (
+                  <p
+                    role="status"
+                    className="rounded-lg border border-[#FFB800]/30 bg-[#FFB800]/10 p-3 text-xs text-[#FFB800]"
+                  >
+                    {infoMsg}
+                  </p>
+                )}
+
                 <Button
                   type="submit"
-                  disabled={!value.trim() || !password.trim()}
-                  className="h-12 w-full bg-[#FFB800] text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                  disabled={busy || !email.trim() || !password}
+                  className="h-12 w-full bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
                 >
-                  Continue <ArrowRight />
+                  {busy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>{authTab === "signin" ? "Sign In" : "Create Account"}</span>
+                      <ArrowRight />
+                    </>
+                  )}
                 </Button>
               </form>
-              <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
-                Test access · any email or phone and password.
-                <br />
-                No verification required.
+            </>
+          )}
+
+          {step === 0 && needsVerification && (
+            <div className="space-y-4 rounded-2xl border border-[#222228] bg-[#141418] p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/40 bg-[#0A0A0C] text-[#FFB800]">
+                  <MailCheck className="h-6 w-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Verify your email</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {auth.currentUser?.email || email}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Click the verification link sent to your inbox, then tap{" "}
+                <span className="font-semibold text-foreground">I&apos;ve verified — Continue</span>
+                .
               </p>
 
-              {savedAccounts.length > 0 && (
-                <div className="mt-7 rounded-2xl border border-[#222228] bg-[#141418] p-4">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Continue as saved account
-                  </p>
-                  <div className="space-y-2">
-                    {savedAccounts.map((rec) => {
-                      const initialChar = (rec.profile.name.trim() || "T").charAt(0).toUpperCase();
-                      return (
-                        <button
-                          key={rec.accountId}
-                          type="button"
-                          onClick={() => onLogin(rec.accountId, rec.profile)}
-                          className="flex min-h-[52px] w-full items-center gap-3 rounded-xl border border-[#222228] bg-[#0A0A0C] px-3 py-2 text-left transition hover:border-[#FFB800]"
-                        >
-                          {rec.profile.avatar ? (
-                            <img
-                              src={rec.profile.avatar}
-                              alt={rec.profile.name}
-                              className="h-9 w-9 shrink-0 rounded-full border border-[#FFB800]/60 object-cover"
-                            />
-                          ) : (
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/60 bg-[#141418] text-sm font-bold text-[#FFB800]">
-                              {initialChar}
-                            </span>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-foreground">
-                              {rec.profile.name}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {rec.profile.handle} · {rec.followers.length} followers
-                            </p>
-                          </div>
-                          <ArrowRight className="h-4 w-4 shrink-0 text-[#FFB800]" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400"
+                >
+                  {error}
+                </p>
               )}
-            </>
+              {infoMsg && (
+                <p
+                  role="status"
+                  className="rounded-lg border border-[#FFB800]/30 bg-[#FFB800]/10 p-3 text-xs text-[#FFB800]"
+                >
+                  {infoMsg}
+                </p>
+              )}
+
+              <div className="space-y-2.5 pt-1">
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleCheckVerified()}
+                  className="h-12 w-full bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                >
+                  {busy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>I&apos;ve verified — Continue</span>
+                      <ArrowRight />
+                    </>
+                  )}
+                </Button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void handleResendVerification()}
+                    className="h-11 rounded-lg border-[#222228] bg-[#0A0A0C] text-xs"
+                  >
+                    Resend link
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void handleGoogleSignIn()}
+                    className="h-11 gap-2 rounded-lg border-[#222228] bg-[#0A0A0C] text-xs"
+                  >
+                    <G />
+                    <span>Use Google</span>
+                  </Button>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    void signOut(auth).catch(() => {});
+                    setNeedsVerification(false);
+                    setError("");
+                    setInfoMsg("");
+                  }}
+                  className="w-full text-xs text-muted-foreground"
+                >
+                  Use another email
+                </Button>
+              </div>
+            </div>
           )}
 
           {step === 1 && (
@@ -362,18 +731,15 @@ export function Auth({
                     return;
                   }
                   setAvatarBusy(true);
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    const result = reader.result;
-                    if (typeof result === "string") setProfile((p) => ({ ...p, avatar: result }));
-                    setError("");
-                    setAvatarBusy(false);
-                  };
-                  reader.onerror = () => {
-                    setError("This photo could not be opened. Try another.");
-                    setAvatarBusy(false);
-                  };
-                  reader.readAsDataURL(file);
+                  void compressAvatarFile(file)
+                    .then((dataUrl) => {
+                      setProfile((p) => ({ ...p, avatar: dataUrl }));
+                      setError("");
+                    })
+                    .catch(() => {
+                      setError("This photo could not be opened. Try another.");
+                    })
+                    .finally(() => setAvatarBusy(false));
                 }}
               />
               <label className="block space-y-2 text-sm font-medium">
@@ -406,6 +772,48 @@ export function Auth({
                   />
                 </div>
               </label>
+              <div className="space-y-2">
+                <label className="block space-y-2 text-sm font-medium">
+                  <span>
+                    What city / vibe zone are you in?{" "}
+                    <span className="font-normal text-muted-foreground">· for People Near You</span>
+                  </span>
+                  <div className="relative">
+                    <MapPin className="absolute left-3.5 top-3.5 h-4 w-4 text-[#FFB800]" />
+                    <input
+                      className={`${field} pl-10`}
+                      maxLength={80}
+                      value={profile.location ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const { city } = normalizeCity(val);
+                        setProfile((p) => ({ ...p, location: val, city }));
+                      }}
+                      placeholder="e.g. Johannesburg, Lagos, NYC, London..."
+                    />
+                  </div>
+                </label>
+                <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
+                  {POPULAR_CITIES.map((city) => {
+                    const active =
+                      (profile.location ?? "").trim().toLowerCase() === city.toLowerCase();
+                    return (
+                      <button
+                        key={city}
+                        type="button"
+                        onClick={() => setProfile((p) => ({ ...p, location: city, city }))}
+                        className={`min-h-[32px] shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition ${
+                          active
+                            ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
+                            : "border-[#222228] bg-[#141418] text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {city}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <label className="block space-y-2 text-sm font-medium">
                 <span>
                   Bio <span className="font-normal text-muted-foreground">· optional</span>
@@ -494,24 +902,31 @@ export function Auth({
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-[#FFB800]/40 bg-[#0A0A0C] text-[#FFB800]">
                   <Check className="h-7 w-7" />
                 </div>
-                <h2 className="mt-4 text-lg font-semibold">Your profile starts fresh</h2>
+                <h2 className="mt-4 text-lg font-semibold">Your profile is synced</h2>
                 <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-                  No placeholder accounts or inflated numbers. Discover real drops, reels, and crews
-                  inside.
+                  {profile.location
+                    ? `Local radar tuned for ${profile.location}. Discover real drops, reels, and creators near you.`
+                    : "Discover real drops, reels, and creators inside."}
                 </p>
               </div>
+              {error && (
+                <p role="alert" className="mt-4 text-sm text-red-400">
+                  {error}
+                </p>
+              )}
               <Button
+                disabled={busy}
                 className="mt-7 h-12 w-full bg-[#FFB800] text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                onClick={() =>
-                  onLogin(account, {
-                    ...profile,
-                    name: profile.name.trim(),
-                    handle: `@${profile.handle.replace(/^@/, "")}`,
-                    bio: profile.bio.trim(),
-                  })
-                }
+                onClick={() => void handleFinishOnboarding()}
               >
-                Enter Tumeni <ArrowRight />
+                {busy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <span>Enter Tumeni</span>
+                    <ArrowRight />
+                  </>
+                )}
               </Button>
             </>
           )}
@@ -522,6 +937,11 @@ export function Auth({
               className="mt-5 px-0 text-muted-foreground"
               onClick={() => {
                 setError("");
+                if (step === 1 && auth.currentUser) {
+                  void signOut(auth).catch(() => {});
+                  setAccount("");
+                  setNeedsVerification(false);
+                }
                 setStep((s) => s - 1);
               }}
             >

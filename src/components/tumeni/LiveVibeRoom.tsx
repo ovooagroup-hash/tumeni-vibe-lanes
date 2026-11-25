@@ -31,6 +31,7 @@ import {
   type User,
 } from "./data";
 import { Avatar, Waveform } from "./SharedUI";
+import { claimMediaFocus, releaseMediaFocus } from "./mediaCoordinator";
 
 export type FloatingReaction = {
   id: string;
@@ -231,6 +232,13 @@ export function LiveVibeRoomSheet({
     });
   }, [micMuted, isHostBroadcast]);
 
+  useEffect(() => {
+    claimMediaFocus("live-room");
+    return () => {
+      releaseMediaFocus("live-room");
+    };
+  }, []);
+
   // Watcher Mode: Sync creator stream video + optional audio
   useEffect(() => {
     if (isHostBroadcast) return;
@@ -240,13 +248,21 @@ export function LiveVibeRoomSheet({
       v.muted = streamMuted || !!currentStream.audioUrl;
       void v.play().catch(() => {});
     }
-    if (a && currentStream.audioUrl) {
-      a.src = currentStream.audioUrl;
-      a.muted = streamMuted;
-      if (!streamMuted) {
-        void a.play().catch(() => {});
+    if (a) {
+      if (currentStream.audioUrl) {
+        if (a.src !== currentStream.audioUrl) {
+          a.src = currentStream.audioUrl;
+        }
+        a.muted = streamMuted;
+        if (!streamMuted) {
+          void a.play().catch(() => {});
+        } else {
+          a.pause();
+        }
       } else {
         a.pause();
+        a.removeAttribute("src");
+        a.load();
       }
     }
   }, [isHostBroadcast, streamMuted, currentStream]);

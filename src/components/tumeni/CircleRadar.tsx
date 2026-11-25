@@ -1,33 +1,58 @@
 import { useState } from "react";
-import { BadgeCheck, Check, MessageCircle, Search, UserPlus, Users, X } from "lucide-react";
+import { BadgeCheck, Check, MapPin, MessageCircle, Search, UserPlus, Users, X } from "lucide-react";
 import { CREWS, fmt, type Crew, type SuggestedPerson, type User } from "./data";
+import { normalizeCity } from "./onboarding";
 import { Avatar } from "./SharedUI";
 
-export type RadarFilter = "suggestions" | "friends" | "requests";
+export type RadarFilter = "suggestions" | "nearby" | "friends" | "requests";
+
+function isCityMatch(person: SuggestedPerson, userLocation?: string): boolean {
+  const { cityLower } = normalizeCity(userLocation ?? "");
+  if (!cityLower) return Boolean(person.nearYou);
+  const pCity = normalizeCity(person.city ?? person.location ?? "").cityLower;
+  if (!pCity) return Boolean(person.nearYou);
+  return pCity === cityLower || pCity.includes(cityLower) || cityLower.includes(pCity);
+}
 
 function MutualFriendsLine({ person }: { person: SuggestedPerson }) {
+  const locationLabel = person.location || person.city;
+
   if (person.sharedWith.length === 0) {
     return (
-      <p className="mt-1 truncate text-xs tabular-nums text-muted-foreground">
-        {fmt(person.followers)} followers
-      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs tabular-nums text-muted-foreground">
+        <span>{fmt(person.followers)} followers</span>
+        {locationLabel && (
+          <span className="inline-flex items-center gap-0.5 text-[#FFB800]">
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className="truncate">{locationLabel}</span>
+          </span>
+        )}
+      </div>
     );
   }
   return (
-    <div className="mt-1 flex items-center gap-2">
-      <div className="flex -space-x-1.5">
-        {person.sharedWith.slice(0, 3).map((friend) => (
-          <div
-            key={friend.id}
-            className="overflow-hidden rounded-full border border-[#141418] bg-[#0A0A0C]"
-          >
-            <Avatar src={friend.avatar} name={friend.name} handle={friend.handle} size={20} />
-          </div>
-        ))}
+    <div className="mt-1 space-y-1">
+      <div className="flex items-center gap-2">
+        <div className="flex -space-x-1.5">
+          {person.sharedWith.slice(0, 3).map((friend) => (
+            <div
+              key={friend.id}
+              className="overflow-hidden rounded-full border border-[#141418] bg-[#0A0A0C]"
+            >
+              <Avatar src={friend.avatar} name={friend.name} handle={friend.handle} size={20} />
+            </div>
+          ))}
+        </div>
+        <p className="min-w-0 truncate text-xs tabular-nums text-muted-foreground">
+          {person.mutuals} mutual friends
+        </p>
       </div>
-      <p className="min-w-0 truncate text-xs tabular-nums text-muted-foreground">
-        {person.mutuals} mutual friends
-      </p>
+      {locationLabel && (
+        <p className="inline-flex items-center gap-1 text-[11px] font-medium text-[#FFB800]">
+          <MapPin className="h-3 w-3 shrink-0" />
+          <span className="truncate">{locationLabel}</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -35,39 +60,65 @@ function MutualFriendsLine({ person }: { person: SuggestedPerson }) {
 export function CircleRadarCarousel({
   suggestions,
   tappedIds,
+  userLocation,
+  onEditLocation,
   onTapIn,
   onDismiss,
   onSeeAll,
 }: {
   suggestions: SuggestedPerson[];
   tappedIds: string[];
+  userLocation?: string | undefined;
+  onEditLocation?: (() => void) | undefined;
   onTapIn: (id: string, name: string) => void;
   onDismiss: (id: string) => void;
   onSeeAll: () => void;
 }) {
   if (suggestions.length === 0) return null;
 
+  const { city } = normalizeCity(userLocation ?? "");
+  const ordered = [...suggestions].sort(
+    (a, b) => Number(isCityMatch(b, userLocation)) - Number(isCityMatch(a, userLocation)),
+  );
+
   return (
     <section
-      aria-label="People you may know"
+      aria-label="People near you"
       className="border-b border-[#222228] bg-[#141418] py-4 sm:rounded-3xl sm:border sm:px-4"
     >
-      <div className="mb-3 flex items-center justify-between px-4 sm:px-0">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-[#FFB800]" />
-          <h2 className="text-base font-semibold text-foreground">People you may know</h2>
+      <div className="mb-3 flex items-center justify-between gap-2 px-4 sm:px-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <Users className="h-4 w-4 shrink-0 text-[#FFB800]" />
+          <h2 className="truncate text-base font-semibold text-foreground">People Near You</h2>
+          {city ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#FFB800]/30 bg-[#0A0A0C] px-2.5 py-0.5 text-[11px] font-medium text-[#FFB800]">
+              <MapPin className="h-3 w-3" />
+              <span>{city}</span>
+            </span>
+          ) : (
+            onEditLocation && (
+              <button
+                type="button"
+                onClick={onEditLocation}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#222228] bg-[#0A0A0C] px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:border-[#FFB800] hover:text-[#FFB800]"
+              >
+                <MapPin className="h-3 w-3 text-[#FFB800]" />
+                <span>Set city</span>
+              </button>
+            )
+          )}
         </div>
         <button
           type="button"
           onClick={onSeeAll}
-          className="min-h-[36px] px-2 text-xs font-semibold text-[#FFB800] transition hover:underline"
+          className="min-h-[36px] shrink-0 px-2 text-xs font-semibold text-[#FFB800] transition hover:underline"
         >
           See all
         </button>
       </div>
 
       <div className="no-scrollbar flex gap-3 overflow-x-auto px-4 pb-1 sm:px-0">
-        {suggestions.map((person) => {
+        {ordered.map((person) => {
           const { user } = person;
           const added = tappedIds.includes(user.id);
           return (
@@ -147,6 +198,7 @@ export function CircleRadarHub({
   requests,
   allPeople,
   currentAccountId,
+  userLocation,
   tappedIds,
   joinedCrews,
   onAddFriend,
@@ -164,6 +216,7 @@ export function CircleRadarHub({
   requests: SuggestedPerson[];
   allPeople: SuggestedPerson[];
   currentAccountId?: string | undefined;
+  userLocation?: string | undefined;
   tappedIds: string[];
   joinedCrews: string[];
   onAddFriend: (id: string, name: string) => void;
@@ -177,17 +230,27 @@ export function CircleRadarHub({
 }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
+  const { city } = normalizeCity(userLocation ?? "");
 
   const matchesPerson = (p: SuggestedPerson) =>
     !needle ||
     p.user.name.toLowerCase().includes(needle) ||
     p.user.handle.toLowerCase().includes(needle) ||
     p.vibeTag.toLowerCase().includes(needle) ||
-    p.bio.toLowerCase().includes(needle);
+    p.bio.toLowerCase().includes(needle) ||
+    (p.location ?? "").toLowerCase().includes(needle) ||
+    (p.city ?? "").toLowerCase().includes(needle);
 
   const visibleSuggestions = needle
     ? allPeople.filter(matchesPerson)
     : suggestions.filter(matchesPerson);
+  const nearbyPool = allPeople.filter(
+    (p) => p.user.id !== currentAccountId && isCityMatch(p, userLocation) && matchesPerson(p),
+  );
+  const visibleNearby =
+    nearbyPool.length > 0
+      ? nearbyPool
+      : allPeople.filter((p) => p.user.id !== currentAccountId && p.nearYou && matchesPerson(p));
   const visibleFriends = allPeople.filter((p) => tappedIds.includes(p.user.id) && matchesPerson(p));
   const visibleRequests = requests.filter(matchesPerson);
   const matchedCrews = needle
@@ -201,27 +264,32 @@ export function CircleRadarHub({
 
   const pills: { id: RadarFilter; label: string; count?: number }[] = [
     { id: "suggestions", label: "Suggestions" },
+    { id: "nearby", label: city ? `Near ${city}` : "Near You", count: visibleNearby.length },
     { id: "friends", label: "Your Friends", count: visibleFriends.length },
     { id: "requests", label: "Requests", count: requests.length },
   ];
 
   const activeList = needle
     ? allPeople.filter(matchesPerson)
-    : activeFilter === "friends"
-      ? visibleFriends
-      : activeFilter === "requests"
-        ? visibleRequests
-        : visibleSuggestions;
+    : activeFilter === "nearby"
+      ? visibleNearby
+      : activeFilter === "friends"
+        ? visibleFriends
+        : activeFilter === "requests"
+          ? visibleRequests
+          : visibleSuggestions;
 
   return (
-    <div className="px-4 pt-5 pb-8">
+    <div className="px-4 pb-8 pt-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Friends<span className="text-[#FFB800]">.</span>
+            Circle Radar<span className="text-[#FFB800]">.</span>
           </h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Manage your circle, friend requests, and creator connections
+            {city
+              ? `Discovering creators around ${city} and your circle`
+              : "Discover creators near you, friend requests, and crews"}
           </p>
         </div>
         <span className="text-xs font-semibold tabular-nums text-[#FFB800]">
@@ -229,11 +297,11 @@ export function CircleRadarHub({
         </span>
       </div>
 
-      {/* Top Pill Selector: Suggestions | Your Friends | Requests */}
+      {/* Top Pill Selector: Suggestions | Near You | Your Friends | Requests */}
       <div
         role="tablist"
         aria-label="Friends sections"
-        className="mb-4 flex gap-2 overflow-x-auto no-scrollbar"
+        className="no-scrollbar mb-4 flex gap-2 overflow-x-auto"
       >
         {pills.map((pill) => {
           const active = activeFilter === pill.id;
@@ -269,7 +337,7 @@ export function CircleRadarHub({
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search friends, creators, crews..."
+          placeholder="Search people, cities, handles, crews..."
           className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
         {q && (
@@ -284,23 +352,44 @@ export function CircleRadarHub({
         )}
       </label>
 
-      {/* Facebook-Style Connection Cards */}
+      {/* Location prompt banner inside Near You tab if user hasn't set a city */}
+      {activeFilter === "nearby" && !city && onOpenMyProfile && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-[#FFB800]/30 bg-[#141418] px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <MapPin className="h-4 w-4 shrink-0 text-[#FFB800]" />
+            <p className="text-xs text-muted-foreground">
+              Add your city in your profile to prioritize creators right near you.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenMyProfile}
+            className="min-h-[34px] shrink-0 rounded-full bg-[#FFB800] px-3 text-xs font-semibold text-[#0A0A0C]"
+          >
+            Set city
+          </button>
+        </div>
+      )}
+
+      {/* Connection Cards */}
       <section className="mt-4 space-y-3" aria-label="Connections list">
         {activeList.length === 0 ? (
           <div className="rounded-3xl border border-[#222228] bg-[#141418] px-6 py-12 text-center">
             <p className="text-sm font-medium text-foreground">
               {needle
                 ? `No matches for "${q}"`
-                : activeFilter === "friends"
-                  ? "You haven't added friends yet."
-                  : activeFilter === "requests"
-                    ? "No pending friend requests right now."
-                    : "No new suggestions right now."}
+                : activeFilter === "nearby"
+                  ? `No creators found near ${city || "your city"} yet.`
+                  : activeFilter === "friends"
+                    ? "You haven't added friends yet."
+                    : activeFilter === "requests"
+                      ? "No pending friend requests right now."
+                      : "No new suggestions right now."}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {activeFilter === "friends"
                 ? "Tap Suggestions to add creators into your circle."
-                : "Try checking another tab or clearing your search."}
+                : "Try checking another tab or searching by city or name."}
             </p>
           </div>
         ) : (
@@ -426,7 +515,7 @@ export function CircleRadarHub({
       {/* Matching Crews when searching */}
       {matchedCrews.length > 0 && (
         <section className="mt-6 space-y-2.5" aria-label="Matching Crews">
-          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Matching Crews
           </h2>
           {matchedCrews.map((crew) => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCheck,
@@ -27,6 +27,7 @@ import {
   type VoiceNote,
 } from "./data";
 import { Avatar, Waveform } from "./SharedUI";
+import { claimMediaFocus, releaseMediaFocus, subscribeMediaFocus } from "./mediaCoordinator";
 
 const QUICK_REACTIONS = ["🔥", "👑", "😂", "💛"] as const;
 const ROOM_MOODS = [
@@ -101,19 +102,32 @@ export function MessagesList({ chats, onOpen }: { chats: Chat[]; onOpen: (id: st
 }
 
 function VoiceNoteBubble({ note, mine }: { note: VoiceNote; mine: boolean }) {
+  const voiceId = `chat-voice-${useId()}`;
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
+    return subscribeMediaFocus((activeId) => {
+      if (activeId !== voiceId) {
+        setPlaying(false);
+      }
+    });
+  }, [voiceId]);
+
+  useEffect(() => {
     const a = audioRef.current;
-    if (!a) return;
     if (playing) {
-      void a.play().catch(() => {});
+      claimMediaFocus(voiceId);
+      if (a) void a.play().catch(() => {});
     } else {
-      a.pause();
+      releaseMediaFocus(voiceId);
+      if (a) a.pause();
     }
-  }, [playing]);
+    return () => {
+      releaseMediaFocus(voiceId);
+    };
+  }, [playing, voiceId]);
 
   useEffect(() => {
     if (!playing || note.src) return;

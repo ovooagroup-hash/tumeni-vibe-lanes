@@ -1,36 +1,47 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, X, Heart, Send, Camera, ImagePlus } from "lucide-react";
+import { Plus, X, Heart, Send, Camera, ImagePlus, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { USERS, type User } from "./data";
+import { claimMediaFocus, releaseMediaFocus } from "./mediaCoordinator";
 
 type Slide = { video?: string; image?: string; text?: string };
 type Story = { user: User; slides: Slide[] };
 
 const SEED: Story[] = [
   {
-    user: USERS.nala,
+    user: USERS.haha,
     slides: [
-      { video: "https://samplelib.com/lib/preview/mp4/sample-5s.mp4" },
-      { text: "Sunday vibes only ☀️" },
+      { video: "https://cdn.coverr.co/videos/coverr-girl-touches-a-dog-s-nose-3909/720p.mp4" },
+      { text: "More dog bloopers dropping tonight 😂🐶" },
+    ],
+  },
+  {
+    user: USERS.amara,
+    slides: [
+      { video: "https://cdn.coverr.co/videos/coverr-woman-dancing-in-the-street-7552/720p.mp4" },
+    ],
+  },
+  {
+    user: USERS.zuri,
+    slides: [
+      {
+        video: "https://cdn.coverr.co/videos/coverr-vlogger-greeting-audience-by-the-sea/720p.mp4",
+      },
+      { text: "Coastal vlog up on the feed 🌊📸" },
+    ],
+  },
+  {
+    user: USERS.dre,
+    slides: [
+      { video: "https://cdn.coverr.co/videos/coverr-slow-mo-basketball-hoop-5187/720p.mp4" },
+      { text: "Game winner in slow-mo 🏀🔥" },
     ],
   },
   {
     user: USERS.yung,
-    slides: [{ video: "https://samplelib.com/lib/preview/mp4/sample-10s.mp4" }],
+    slides: [{ video: "https://cdn.coverr.co/videos/coverr-dj-at-a-party-8079/720p.mp4" }],
   },
-  { user: USERS.haha, slides: [{ text: "Studio outtakes dropping tonight 😂" }] },
-  {
-    user: USERS.kito,
-    slides: [
-      { video: "https://samplelib.com/lib/preview/mp4/sample-15s.mp4" },
-      { text: "New beat drops tonight 🔥" },
-    ],
-  },
-  { user: USERS.zuri, slides: [{ text: "Who's pulling up later? 👀" }] },
-  {
-    user: USERS.dre,
-    slides: [{ video: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" }],
-  },
+  { user: USERS.taya, slides: [{ text: "5-min breakfast hack just dropped 🍳✨" }] },
 ];
 
 function Ring({ user, seen, size = 60 }: { user: User; seen: boolean; size?: number }) {
@@ -277,6 +288,7 @@ function Viewer({
   const [si, setSi] = useState(start);
   const [i, setI] = useState(0);
   const [reply, setReply] = useState("");
+  const [muted, setMuted] = useState(false);
   const story = stories[si];
   const next = () => {
     if (!story) return;
@@ -294,6 +306,12 @@ function Viewer({
     }
   };
   useEffect(() => {
+    claimMediaFocus("story-viewer");
+    return () => {
+      releaseMediaFocus("story-viewer");
+    };
+  }, []);
+  useEffect(() => {
     if (story) onSeen(story.user.id);
     const t = setTimeout(next, 5000);
     return () => clearTimeout(t);
@@ -305,11 +323,19 @@ function Viewer({
       <div className="relative h-dvh w-full max-w-md overflow-hidden border-[#222228] bg-[#141418] sm:h-[90dvh] sm:rounded-3xl sm:border">
         {slide?.video ? (
           <video
+            key={slide.video}
             src={slide.video}
             autoPlay
             loop
-            muted
+            muted={muted}
             playsInline
+            preload="auto"
+            onLoadedMetadata={(e) => {
+              void e.currentTarget.play().catch(() => {
+                e.currentTarget.muted = true;
+                void e.currentTarget.play().catch(() => {});
+              });
+            }}
             className="h-full w-full object-cover"
           />
         ) : slide?.image ? (
@@ -340,10 +366,20 @@ function Viewer({
             <Ring user={story.user} seen size={32} />
             <span className="font-semibold text-foreground">{story.user.name}</span>
             <span className="text-xs text-muted-foreground">2h</span>
+            {slide?.video && (
+              <button
+                type="button"
+                aria-label={muted ? "Unmute story" : "Mute story"}
+                onClick={() => setMuted((m) => !m)}
+                className="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0A0C]/55 text-foreground"
+              >
+                {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+            )}
             <button
               aria-label="Close story"
               onClick={onClose}
-              className="ml-auto flex h-10 w-10 items-center justify-center rounded-full text-foreground"
+              className={`${slide?.video ? "" : "ml-auto "}flex h-10 w-10 items-center justify-center rounded-full text-foreground`}
             >
               <X className="h-6 w-6" />
             </button>
