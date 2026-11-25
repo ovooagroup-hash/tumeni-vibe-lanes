@@ -40,12 +40,15 @@ import {
   FEELING_MOODS,
   POST_AUDIENCES,
   SOUND_CATEGORIES,
+  STUDIO_FILTERS,
   TRENDING_SOUNDS,
+  computeFilterCss,
   searchOnlineSongs,
   type Audience,
   type Kind,
   type SoundCategory,
   type SoundTrack,
+  type StudioFilterOption,
   type User,
   type VideoOverlay,
   type VideoSticker,
@@ -58,14 +61,6 @@ export type StudioLaunchMode = "camera" | "status" | "gallery";
 type RecordMode = "3m" | "60s" | "15s" | "photo";
 type StudioStep = "capture" | "edit" | "review" | "status";
 type CamStatus = "checking" | "live" | "studio";
-
-type FilterOption = {
-  id: string;
-  label: string;
-  css: string;
-  canvasFilter: string;
-  overlay?: string;
-};
 
 type EffectOption = {
   id: string;
@@ -87,44 +82,6 @@ type RecordedSegment = {
   storageKey?: string | undefined;
   durationSec: number;
 };
-
-const STUDIO_FILTERS: FilterOption[] = [
-  { id: "normal", label: "Natural", css: "", canvasFilter: "none" },
-  {
-    id: "obsidian",
-    label: "Obsidian",
-    css: "contrast-125 brightness-90 saturate-75",
-    canvasFilter: "contrast(125%) brightness(90%) saturate(75%)",
-    overlay: "bg-gradient-to-b from-[#0A0A0C]/20 via-transparent to-[#0A0A0C]/35",
-  },
-  {
-    id: "amber",
-    label: "Gold Glow",
-    css: "sepia-[0.28] saturate-150 brightness-105 contrast-105",
-    canvasFilter: "sepia(28%) saturate(150%) brightness(105%) contrast(105%)",
-    overlay: "bg-gradient-to-tr from-[#FFB800]/22 via-transparent to-[#FFB800]/15",
-  },
-  {
-    id: "cyber",
-    label: "Cyber",
-    css: "saturate-150 contrast-115 hue-rotate-[14deg]",
-    canvasFilter: "saturate(150%) contrast(115%) hue-rotate(14deg)",
-    overlay: "bg-gradient-to-tr from-sky-500/15 via-transparent to-[#FFB800]/15",
-  },
-  {
-    id: "warm",
-    label: "Warm Film",
-    css: "sepia-[0.18] contrast-110 brightness-105 saturate-125",
-    canvasFilter: "sepia(18%) contrast(110%) brightness(105%) saturate(125%)",
-    overlay: "bg-gradient-to-b from-amber-500/10 via-transparent to-[#0A0A0C]/30",
-  },
-  {
-    id: "noir",
-    label: "Noir B&W",
-    css: "grayscale contrast-130 brightness-95",
-    canvasFilter: "grayscale(100%) contrast(130%) brightness(95%)",
-  },
-];
 
 const STUDIO_EFFECTS: EffectOption[] = [
   { id: "none", label: "Clean" },
@@ -342,6 +299,7 @@ export function StudioCameraModal({
     mediaStorageKey?: string | undefined;
     isVideo?: boolean | undefined;
     filterClass?: string | undefined;
+    filterCss?: string | undefined;
     effectId?: string | undefined;
     playbackSpeed?: number | undefined;
     overlays?: VideoOverlay[] | undefined;
@@ -358,7 +316,9 @@ export function StudioCameraModal({
   const [showStageStarter, setShowStageStarter] = useState(true);
 
   // Creative TikTok Studio tools
-  const [activeFilter, setActiveFilter] = useState<FilterOption>(STUDIO_FILTERS[0]!);
+  const [activeFilter, setActiveFilter] = useState<StudioFilterOption>(STUDIO_FILTERS[0]!);
+  const [filterIntensity, setFilterIntensity] = useState(100);
+  const [swipeBadge, setSwipeBadge] = useState<StudioFilterOption | null>(null);
   const [activeEffect, setActiveEffect] = useState<EffectOption>(STUDIO_EFFECTS[0]!);
   const [activeScene, setActiveScene] = useState<ScenePreset>(SCENE_PRESETS[0]!);
   const [openToolPanel, setOpenToolPanel] = useState<
@@ -422,21 +382,52 @@ export function StudioCameraModal({
   const recordStartSecRef = useRef(0);
   const nativeCamInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const swipeBadgeTimerRef = useRef<number | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const maxSeconds = recordMode === "3m" ? 180 : recordMode === "60s" ? 60 : 15;
   const hasLiveCam = camStatus === "live";
   const segmentsDuration = segments.reduce((acc, s) => acc + s.durationSec, 0);
   const totalElapsed = Math.min(maxSeconds, segmentsDuration + (isRecording ? recordElapsed : 0));
+  const activeCssFilter = computeFilterCss(activeFilter, filterIntensity);
 
-  // Keep latest creative overlays in refs for live Studio Canvas recording
+  // Keep latest creative overlays & filter in refs for live Studio Canvas recording
   const overlaysRef = useRef(overlays);
   const stickersRef = useRef(stickers);
   const sceneRef = useRef(activeScene);
   const effectRef = useRef(activeEffect);
+  const filterCssRef = useRef(activeCssFilter);
   overlaysRef.current = overlays;
   stickersRef.current = stickers;
   sceneRef.current = activeScene;
   effectRef.current = activeEffect;
+  filterCssRef.current = activeCssFilter;
+
+  const selectFilter = useCallback((next: StudioFilterOption, showToastBadge = false) => {
+    setActiveFilter(next);
+    if (showToastBadge) {
+      setSwipeBadge(next);
+      if (swipeBadgeTimerRef.current) window.clearTimeout(swipeBadgeTimerRef.current);
+      swipeBadgeTimerRef.current = window.setTimeout(() => {
+        setSwipeBadge(null);
+      }, 1200);
+    }
+  }, []);
+
+  const cycleFilter = useCallback(
+    (delta: 1 | -1) => {
+      const idx = STUDIO_FILTERS.findIndex((f) => f.id === activeFilter.id);
+      const nextIdx = ((idx < 0 ? 0 : idx) + delta + STUDIO_FILTERS.length) % STUDIO_FILTERS.length;
+      selectFilter(STUDIO_FILTERS[nextIdx]!, true);
+    },
+    [activeFilter.id, selectFilter],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (swipeBadgeTimerRef.current) window.clearTimeout(swipeBadgeTimerRef.current);
+    };
+  }, []);
 
   // Smart webcam request wrapped in strict try/catch
   useEffect(() => {
@@ -448,7 +439,9 @@ export function StudioCameraModal({
 
     let cancelled = false;
     const initCamera = async () => {
-      setCamStatus("checking");
+      if (!streamRef.current) {
+        setCamStatus("checking");
+      }
       setMicWarning("");
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
@@ -482,9 +475,11 @@ export function StudioCameraModal({
         setShowStageStarter(false);
         if (camVideoRef.current) {
           camVideoRef.current.srcObject = stream;
+          void camVideoRef.current.play().catch(() => {});
         }
       } catch {
         if (cancelled) return;
+        streamRef.current = null;
         setCamStatus("studio");
       }
     };
@@ -496,6 +491,17 @@ export function StudioCameraModal({
       streamRef.current = null;
     };
   }, [step, facingMode, camRetryKey]);
+
+  // Dedicated camera stream attachment effect (prevents blank/black mount race condition)
+  useEffect(() => {
+    const videoEl = camVideoRef.current;
+    if (step === "capture" && camStatus === "live" && videoEl && streamRef.current) {
+      if (videoEl.srcObject !== streamRef.current) {
+        videoEl.srcObject = streamRef.current;
+      }
+      void videoEl.play().catch(() => {});
+    }
+  }, [step, camStatus, facingMode]);
 
   // Cinematic Video Studio Canvas (Zero audio visualizer bars — pure 9:16 Video Creator Stage)
   useEffect(() => {
@@ -515,7 +521,7 @@ export function StudioCameraModal({
       const scene = sceneRef.current;
 
       ctx.save();
-      ctx.filter = activeFilter.canvasFilter !== "none" ? activeFilter.canvasFilter : "none";
+      ctx.filter = filterCssRef.current;
 
       // Smooth cinematic gradient backdrop
       const bg = ctx.createLinearGradient(0, 0, w, h);
@@ -621,7 +627,7 @@ export function StudioCameraModal({
 
     rafId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafId);
-  }, [step, hasLiveCam, activeFilter.canvasFilter, isRecording]);
+  }, [step, hasLiveCam, isRecording]);
 
   // Apply rear torch constraint if supported
   useEffect(() => {
@@ -765,8 +771,8 @@ export function StudioCameraModal({
     if (!ctx) return;
 
     ctx.save();
-    if (activeFilter.canvasFilter !== "none") {
-      ctx.filter = activeFilter.canvasFilter;
+    if (activeCssFilter !== "none") {
+      ctx.filter = activeCssFilter;
     }
     if (sourceEl instanceof HTMLVideoElement && facingMode === "user") {
       ctx.translate(canvas.width, 0);
@@ -789,7 +795,7 @@ export function StudioCameraModal({
       "image/jpeg",
       0.92,
     );
-  }, [hasLiveCam, activeFilter.canvasFilter, facingMode]);
+  }, [hasLiveCam, activeCssFilter, facingMode]);
 
   const finishSegmentToCaptured = useCallback((seg: RecordedSegment) => {
     setCapturedUrl(seg.url);
@@ -1106,7 +1112,8 @@ export function StudioCameraModal({
       media: capturedUrl,
       mediaStorageKey: capturedStorageKey,
       isVideo: capturedKind === "video" ? true : undefined,
-      filterClass: activeFilter.css || undefined,
+      filterClass: filterIntensity >= 50 && activeFilter.css ? activeFilter.css : undefined,
+      filterCss: activeCssFilter !== "none" ? activeCssFilter : undefined,
       effectId: activeEffect.id !== "none" ? activeEffect.id : undefined,
       playbackSpeed: speed !== 1 ? speed : undefined,
       overlays: overlays.length > 0 ? overlays : undefined,
@@ -1669,14 +1676,45 @@ export function StudioCameraModal({
           />
         )}
 
-        <div className="relative h-dvh w-full max-w-md overflow-hidden bg-[#0A0A0C] sm:aspect-[9/16] sm:h-[94dvh] sm:w-auto sm:rounded-3xl sm:border sm:border-[#222228]">
-          {/* Video / Photo Canvas Preview */}
+        <div className="relative h-dvh w-full max-w-md overflow-hidden bg-[#121218] sm:aspect-[9/16] sm:h-[94dvh] sm:w-auto sm:rounded-3xl sm:border sm:border-[#222228]">
+          {/* Video / Photo Canvas Preview (Swipe left/right to cycle filters) */}
           <div
+            onTouchStart={(e) => {
+              const t = e.touches[0];
+              if (t) swipeStartRef.current = { x: t.clientX, y: t.clientY };
+            }}
+            onTouchEnd={(e) => {
+              const start = swipeStartRef.current;
+              const t = e.changedTouches[0];
+              swipeStartRef.current = null;
+              if (!start || !t) return;
+              const dx = t.clientX - start.x;
+              const dy = t.clientY - start.y;
+              if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+                cycleFilter(dx < 0 ? 1 : -1);
+              }
+            }}
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse") {
+                swipeStartRef.current = { x: e.clientX, y: e.clientY };
+              }
+            }}
+            onPointerUp={(e) => {
+              if (e.pointerType !== "mouse") return;
+              const start = swipeStartRef.current;
+              swipeStartRef.current = null;
+              if (!start) return;
+              const dx = e.clientX - start.x;
+              const dy = e.clientY - start.y;
+              if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+                cycleFilter(dx < 0 ? 1 : -1);
+              }
+            }}
             onClick={() => {
               setOpenToolPanel(null);
               if (capturedKind === "video") setEditPaused((p) => !p);
             }}
-            className="relative h-full w-full cursor-pointer"
+            className="relative h-full w-full cursor-pointer select-none"
           >
             {capturedKind === "video" && capturedUrl ? (
               <video
@@ -1685,18 +1723,23 @@ export function StudioCameraModal({
                 autoPlay
                 loop
                 playsInline
-                className={`h-full w-full object-cover ${activeFilter.css}`}
+                style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                className="h-full w-full object-cover"
               />
             ) : capturedUrl ? (
               <img
                 src={capturedUrl}
                 alt="Edited drop"
-                className={`h-full w-full object-cover ${activeFilter.css}`}
+                style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                className="h-full w-full object-cover"
               />
             ) : null}
 
             {activeFilter.overlay && (
-              <div className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`} />
+              <div
+                style={{ opacity: filterIntensity / 100 }}
+                className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`}
+              />
             )}
 
             <VideoStageDecorations
@@ -1709,6 +1752,13 @@ export function StudioCameraModal({
                 toast("Sticker removed");
               }}
             />
+
+            {swipeBadge && (
+              <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#FFB800]/50 bg-[#0A0A0C]/80 px-5 py-2 text-sm font-bold text-foreground shadow-[0_0_24px_rgba(255,184,0,0.35)] backdrop-blur-md">
+                <span className="mr-1.5">{swipeBadge.emoji}</span>
+                <span>{swipeBadge.label}</span>
+              </div>
+            )}
 
             {editPaused && (
               <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#0A0A0C]/70 backdrop-blur-md">
@@ -1858,21 +1908,54 @@ export function StudioCameraModal({
           )}
 
           {openToolPanel === "filters" && (
-            <div className="no-scrollbar absolute inset-x-4 bottom-24 z-30 flex gap-2 overflow-x-auto rounded-2xl border border-[#222228] bg-[#141418]/95 p-2.5 backdrop-blur-xl">
-              {STUDIO_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setActiveFilter(f)}
-                  className={`min-h-[38px] shrink-0 whitespace-nowrap rounded-xl px-3.5 text-xs font-semibold transition ${
-                    activeFilter.id === f.id
-                      ? "bg-[#FFB800] text-[#0A0A0C]"
-                      : "bg-[#0A0A0C] text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+            <div className="absolute inset-x-4 bottom-24 z-30 space-y-2.5 rounded-2xl border border-[#222228] bg-[#141418]/95 p-3 backdrop-blur-xl">
+              {activeFilter.id !== "normal" && (
+                <div className="flex items-center gap-3 px-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Intensity</span>
+                  <input
+                    type="range"
+                    aria-label="Filter intensity"
+                    min={0}
+                    max={100}
+                    value={filterIntensity}
+                    onChange={(e) => setFilterIntensity(Number(e.target.value))}
+                    className="h-1.5 flex-1 accent-[#FFB800]"
+                  />
+                  <span className="w-9 text-right text-[11px] font-bold tabular-nums text-[#FFB800]">
+                    {filterIntensity}%
+                  </span>
+                </div>
+              )}
+              <div className="no-scrollbar flex gap-3 overflow-x-auto py-1">
+                {STUDIO_FILTERS.map((f) => {
+                  const selected = activeFilter.id === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => selectFilter(f)}
+                      className="flex shrink-0 flex-col items-center gap-1"
+                    >
+                      <span
+                        className={`flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br ${f.swatch} text-base transition ${
+                          selected
+                            ? "scale-105 ring-2 ring-[#FFB800] ring-offset-2 ring-offset-[#141418]"
+                            : "opacity-80 hover:opacity-100"
+                        }`}
+                      >
+                        {f.emoji}
+                      </span>
+                      <span
+                        className={`max-w-[60px] truncate text-[10px] font-semibold ${
+                          selected ? "text-[#FFB800]" : "text-muted-foreground"
+                        }`}
+                      >
+                        {f.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -2065,17 +2148,20 @@ export function StudioCameraModal({
                       loop
                       muted
                       playsInline
-                      className={`h-full w-full object-cover ${activeFilter.css}`}
+                      style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                      className="h-full w-full object-cover"
                     />
                   ) : capturedUrl ? (
                     <img
                       src={capturedUrl}
                       alt="Post preview"
-                      className={`h-full w-full object-cover ${activeFilter.css}`}
+                      style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                      className="h-full w-full object-cover"
                     />
                   ) : null}
                   {activeFilter.overlay && (
                     <div
+                      style={{ opacity: filterIntensity / 100 }}
                       className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`}
                     />
                   )}
@@ -2247,17 +2333,22 @@ export function StudioCameraModal({
                   loop
                   muted={previewMuted || !!selectedSound}
                   playsInline
-                  className={`h-full w-full object-cover ${activeFilter.css}`}
+                  style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                  className="h-full w-full object-cover"
                 />
               ) : capturedUrl ? (
                 <img
                   src={capturedUrl}
                   alt="Full preview"
-                  className={`h-full w-full object-cover ${activeFilter.css}`}
+                  style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                  className="h-full w-full object-cover"
                 />
               ) : null}
               {activeFilter.overlay && (
-                <div className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`} />
+                <div
+                  style={{ opacity: filterIntensity / 100 }}
+                  className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`}
+                />
               )}
               <VideoStageDecorations
                 effectId={activeEffect.id}
@@ -2310,7 +2401,40 @@ export function StudioCameraModal({
       {nativeCameraInput}
       {galleryPickerInput}
 
-      <div className="relative h-dvh w-full max-w-md overflow-hidden bg-[#0A0A0C] sm:aspect-[9/16] sm:h-[94dvh] sm:w-auto sm:rounded-3xl sm:border sm:border-[#222228]">
+      <div
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          if (t) swipeStartRef.current = { x: t.clientX, y: t.clientY };
+        }}
+        onTouchEnd={(e) => {
+          const start = swipeStartRef.current;
+          const t = e.changedTouches[0];
+          swipeStartRef.current = null;
+          if (!start || !t) return;
+          const dx = t.clientX - start.x;
+          const dy = t.clientY - start.y;
+          if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+            cycleFilter(dx < 0 ? 1 : -1);
+          }
+        }}
+        onPointerDown={(e) => {
+          if (e.pointerType === "mouse") {
+            swipeStartRef.current = { x: e.clientX, y: e.clientY };
+          }
+        }}
+        onPointerUp={(e) => {
+          if (e.pointerType !== "mouse") return;
+          const start = swipeStartRef.current;
+          swipeStartRef.current = null;
+          if (!start) return;
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+            cycleFilter(dx < 0 ? 1 : -1);
+          }
+        }}
+        className="relative h-dvh w-full max-w-md select-none overflow-hidden bg-[#121218] sm:aspect-[9/16] sm:h-[94dvh] sm:w-auto sm:rounded-3xl sm:border sm:border-[#222228]"
+      >
         {/* Full-Screen Live Camera OR Video Creator Studio Canvas */}
         {hasLiveCam ? (
           <video
@@ -2318,7 +2442,11 @@ export function StudioCameraModal({
             autoPlay
             playsInline
             muted
-            className={`h-full w-full object-cover transition duration-300 ${activeFilter.css} ${
+            onLoadedMetadata={(e) => {
+              void e.currentTarget.play().catch(() => {});
+            }}
+            style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+            className={`h-full w-full object-cover transition duration-300 ${
               facingMode === "user" ? "-scale-x-100" : ""
             }`}
           />
@@ -2327,12 +2455,15 @@ export function StudioCameraModal({
             ref={studioCanvasRef}
             width={540}
             height={960}
-            className={`h-full w-full object-cover ${activeFilter.css}`}
+            className="h-full w-full object-cover"
           />
         )}
 
         {activeFilter.overlay && (
-          <div className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`} />
+          <div
+            style={{ opacity: filterIntensity / 100 }}
+            className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`}
+          />
         )}
 
         <VideoStageDecorations
@@ -2342,6 +2473,13 @@ export function StudioCameraModal({
           onClickOverlay={openTextEditor}
           onClickSticker={(s) => setStickers((prev) => prev.filter((item) => item.id !== s.id))}
         />
+
+        {swipeBadge && (
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#FFB800]/50 bg-[#0A0A0C]/80 px-5 py-2 text-sm font-bold text-foreground shadow-[0_0_24px_rgba(255,184,0,0.35)] backdrop-blur-md">
+            <span className="mr-1.5">{swipeBadge.emoji}</span>
+            <span>{swipeBadge.label}</span>
+          </div>
+        )}
 
         {flashOn && (
           <div className="pointer-events-none absolute inset-0 z-20 border-[14px] border-[#FFF3D1]/75 bg-[#FFF8E6]/15 shadow-[inset_0_0_95px_rgba(255,235,175,0.6)]" />
@@ -2370,15 +2508,14 @@ export function StudioCameraModal({
           showStageStarter &&
           !isRecording &&
           segments.length === 0 && (
-            <div className="pointer-events-none absolute inset-x-14 top-1/2 z-20 -translate-y-1/2">
-              <div className="pointer-events-auto rounded-3xl border border-[#222228] bg-[#141418]/90 p-4 text-center shadow-2xl backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-x-12 bottom-64 top-20 z-20 flex items-center justify-center">
+              <div className="pointer-events-auto w-full rounded-3xl border border-[#222228] bg-[#141418]/90 p-4 text-center shadow-2xl backdrop-blur-xl">
                 <div className="mx-auto mb-2.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FFB800]/15 text-[#FFB800]">
                   <Video className="h-5 w-5" />
                 </div>
                 <h3 className="text-sm font-bold text-foreground">Create Your Video</h3>
                 <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  Shoot with your phone camera, upload clips, or record directly on this studio
-                  stage.
+                  Shoot with your phone camera, pick from gallery, or record on this studio stage.
                 </p>
                 <div className="mt-3 space-y-2">
                   <button
@@ -2395,7 +2532,7 @@ export function StudioCameraModal({
                     className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-[#222228] bg-[#0A0A0C] text-xs font-semibold text-foreground transition hover:border-[#FFB800]"
                   >
                     <ImagePlus className="h-4 w-4 text-[#FFB800]" />
-                    <span>Upload Video / Photo</span>
+                    <span>Pick from Gallery</span>
                   </button>
                   <div className="flex items-center justify-center gap-3 pt-1 text-[11px]">
                     <button
@@ -2606,7 +2743,7 @@ export function StudioCameraModal({
 
         {/* Contextual Capture Tool Drawers */}
         {openToolPanel === "speed" && (
-          <div className="absolute bottom-44 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[#222228] bg-[#141418]/90 p-1.5 backdrop-blur-xl">
+          <div className="absolute bottom-60 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[#222228] bg-[#141418]/90 p-1.5 backdrop-blur-xl">
             {SPEEDS.map((s) => (
               <button
                 key={s}
@@ -2627,27 +2764,8 @@ export function StudioCameraModal({
           </div>
         )}
 
-        {openToolPanel === "filters" && (
-          <div className="no-scrollbar absolute inset-x-4 bottom-44 z-20 flex gap-2 overflow-x-auto rounded-2xl border border-[#222228] bg-[#141418]/90 p-2 backdrop-blur-xl">
-            {STUDIO_FILTERS.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setActiveFilter(f)}
-                className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-xl px-3.5 text-xs font-semibold transition ${
-                  activeFilter.id === f.id
-                    ? "bg-[#FFB800] text-[#0A0A0C]"
-                    : "bg-[#0A0A0C] text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        )}
-
         {openToolPanel === "effects" && (
-          <div className="no-scrollbar absolute inset-x-4 bottom-44 z-20 flex gap-2 overflow-x-auto rounded-2xl border border-[#222228] bg-[#141418]/90 p-2 backdrop-blur-xl">
+          <div className="no-scrollbar absolute inset-x-4 bottom-60 z-20 flex gap-2 overflow-x-auto rounded-2xl border border-[#222228] bg-[#141418]/90 p-2 backdrop-blur-xl">
             {STUDIO_EFFECTS.map((fx) => (
               <button
                 key={fx.id}
@@ -2666,7 +2784,7 @@ export function StudioCameraModal({
         )}
 
         {openToolPanel === "scenes" && (
-          <div className="no-scrollbar absolute inset-x-4 bottom-44 z-20 flex gap-2 overflow-x-auto rounded-2xl border border-[#222228] bg-[#141418]/90 p-2 backdrop-blur-xl">
+          <div className="no-scrollbar absolute inset-x-4 bottom-60 z-20 flex gap-2 overflow-x-auto rounded-2xl border border-[#222228] bg-[#141418]/90 p-2 backdrop-blur-xl">
             {SCENE_PRESETS.map((sc) => (
               <button
                 key={sc.id}
@@ -2687,9 +2805,62 @@ export function StudioCameraModal({
           </div>
         )}
 
-        {/* TikTok Bottom Shutter Deck */}
-        <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-[#0A0A0C] via-[#0A0A0C]/85 to-transparent px-5 pb-safe pt-8">
-          <div className="mb-4 flex items-center justify-center gap-2">
+        {/* TikTok Bottom Shutter Deck with Circular Filter Carousel & Intensity Slider */}
+        <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-[#0A0A0C] via-[#0A0A0C]/85 to-transparent px-4 pb-safe pt-6">
+          {!isRecording && (
+            <div className="mb-3 space-y-2">
+              {(activeFilter.id !== "normal" || openToolPanel === "filters") && (
+                <div className="mx-auto flex max-w-xs items-center gap-2.5 rounded-full border border-[#222228] bg-[#141418]/85 px-3 py-1.5 backdrop-blur-md">
+                  <span className="text-[10px] font-semibold text-muted-foreground">Strength</span>
+                  <input
+                    type="range"
+                    aria-label="Filter intensity"
+                    min={0}
+                    max={100}
+                    value={filterIntensity}
+                    onChange={(e) => setFilterIntensity(Number(e.target.value))}
+                    className="h-1 flex-1 accent-[#FFB800]"
+                  />
+                  <span className="w-8 text-right text-[10px] font-bold tabular-nums text-[#FFB800]">
+                    {filterIntensity}%
+                  </span>
+                </div>
+              )}
+
+              <div className="no-scrollbar flex items-center gap-3 overflow-x-auto px-1 py-1">
+                {STUDIO_FILTERS.map((f) => {
+                  const selected = activeFilter.id === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => selectFilter(f)}
+                      className="flex shrink-0 flex-col items-center gap-1"
+                    >
+                      <span
+                        className={`flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br ${f.swatch} text-sm transition ${
+                          selected
+                            ? "scale-105 ring-2 ring-[#FFB800] ring-offset-2 ring-offset-[#0A0A0C]"
+                            : "opacity-80 hover:opacity-100"
+                        }`}
+                      >
+                        {f.emoji}
+                      </span>
+                      <span
+                        className={`max-w-[60px] truncate text-[10px] font-semibold ${
+                          selected ? "text-[#FFB800]" : "text-muted-foreground"
+                        }`}
+                      >
+                        {f.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="mb-3 flex items-center justify-center gap-2">
             {(
               [
                 ["3m", "3m"],

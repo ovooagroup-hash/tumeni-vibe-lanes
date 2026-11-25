@@ -400,6 +400,108 @@ export const CREWS: Crew[] = [
   },
 ];
 
+export type StudioFilterOption = {
+  id: string;
+  label: string;
+  emoji: string;
+  css: string;
+  canvasFilter: string;
+  swatch: string;
+  overlay?: string | undefined;
+};
+
+export const STUDIO_FILTERS: StudioFilterOption[] = [
+  {
+    id: "normal",
+    label: "Natural",
+    emoji: "✨",
+    css: "",
+    canvasFilter: "none",
+    swatch: "from-zinc-400 via-zinc-600 to-zinc-900",
+  },
+  {
+    id: "glam",
+    label: "Glam Glow",
+    emoji: "💫",
+    css: "brightness-105 contrast-105 saturate-110",
+    canvasFilter: "brightness(105%) contrast(105%) saturate(110%)",
+    overlay: "bg-amber-400/10",
+    swatch: "from-amber-200 via-amber-400 to-rose-300",
+  },
+  {
+    id: "golden",
+    label: "Golden Hour",
+    emoji: "✨",
+    css: "sepia-[0.35] saturate-160 brightness-105 contrast-105",
+    canvasFilter: "sepia(35%) saturate(160%) brightness(105%) contrast(105%)",
+    overlay: "bg-gradient-to-tr from-[#FFB800]/25 via-transparent to-[#FFB800]/15",
+    swatch: "from-[#FFB800] via-orange-400 to-amber-700",
+  },
+  {
+    id: "vintage",
+    label: "Vintage 90s",
+    emoji: "🎬",
+    css: "sepia-[0.25] contrast-115 brightness-95 saturate-125",
+    canvasFilter: "sepia(25%) contrast(115%) brightness(95%) saturate(125%)",
+    overlay: "bg-amber-900/10",
+    swatch: "from-amber-300 via-stone-500 to-stone-800",
+  },
+  {
+    id: "cyber",
+    label: "Cyber Neon",
+    emoji: "⚡",
+    css: "saturate-150 contrast-120 hue-rotate-[18deg]",
+    canvasFilter: "saturate(150%) contrast(120%) hue-rotate(18deg)",
+    overlay: "bg-gradient-to-tr from-cyan-500/15 via-transparent to-[#FFB800]/15",
+    swatch: "from-cyan-400 via-indigo-500 to-[#FFB800]",
+  },
+  {
+    id: "noir",
+    label: "Moody Noir",
+    emoji: "🖤",
+    css: "grayscale contrast-135 brightness-95",
+    canvasFilter: "grayscale(100%) contrast(135%) brightness(95%)",
+    overlay: "bg-[#0A0A0C]/15",
+    swatch: "from-zinc-200 via-zinc-600 to-black",
+  },
+  {
+    id: "bronze",
+    label: "Bronze Skin",
+    emoji: "☀️",
+    css: "sepia-[0.2] saturate-140 contrast-110",
+    canvasFilter: "sepia(20%) saturate(140%) contrast(110%)",
+    overlay: "bg-orange-500/10",
+    swatch: "from-amber-400 via-amber-700 to-stone-900",
+  },
+  {
+    id: "teal",
+    label: "Cinematic Teal",
+    emoji: "🎥",
+    css: "contrast-115 saturate-135 hue-rotate-[-10deg]",
+    canvasFilter: "contrast(115%) saturate(135%) hue-rotate(-10deg)",
+    overlay: "bg-gradient-to-tr from-teal-500/15 via-transparent to-orange-500/10",
+    swatch: "from-teal-400 via-cyan-700 to-orange-400",
+  },
+];
+
+export function computeFilterCss(filter: StudioFilterOption, intensity = 100): string {
+  if (filter.canvasFilter === "none" || intensity <= 0) return "none";
+  const t = Math.max(0, Math.min(1, intensity / 100));
+  if (t >= 0.99) return filter.canvasFilter;
+  const parts: string[] = [];
+  for (const token of filter.canvasFilter.split(/\s+/)) {
+    const m = /^([a-z-]+)\((-?\d+(?:\.\d+)?)(%|deg)\)$/.exec(token);
+    if (!m) continue;
+    const fn = m[1]!;
+    const val = Number(m[2]);
+    const unit = m[3]!;
+    const base = fn === "brightness" || fn === "contrast" || fn === "saturate" ? 100 : 0;
+    const mixed = base + (val - base) * t;
+    parts.push(`${fn}(${mixed.toFixed(1)}${unit})`);
+  }
+  return parts.length > 0 ? parts.join(" ") : "none";
+}
+
 export type VideoOverlay = {
   id: string;
   text: string;
@@ -437,6 +539,7 @@ export type Post = {
   duration?: string | undefined;
   track?: string | undefined;
   filterClass?: string | undefined;
+  filterCss?: string | undefined;
   effectId?: string | undefined;
   playbackSpeed?: number | undefined;
   overlays?: VideoOverlay[] | undefined;
@@ -576,6 +679,160 @@ export const SEED_POSTS: Post[] = [
     views: 18300,
     likes: 1520,
     shares: 112,
+    comments: [],
+  },
+  {
+    id: "post-8",
+    user: USER_MAP.kito,
+    lane: "music",
+    kind: "video",
+    audience: "public",
+    time: "7h ago",
+    caption: "Testing the deep bass synth bounce on studio monitors.",
+    tag: "#StudioSession",
+    video: "https://samplelib.com/lib/preview/mp4/sample-20s.mp4",
+    media: "https://samplelib.com/lib/preview/mp4/sample-20s.mp4",
+    mediaIsVideo: true,
+    track: "Not Like Us — Kendrick Lamar",
+    soundUrl: TRENDING_SOUNDS[1]!.url,
+    views: 27400,
+    likes: 2340,
+    shares: 198,
+    comments: [{ id: "c-8", user: USER_MAP.yung, text: "That low end hits crazy." }],
+  },
+  {
+    id: "post-9",
+    user: USER_MAP.zuri,
+    lane: "mix",
+    kind: "video",
+    audience: "public",
+    time: "8h ago",
+    caption: "Ocean light and slow motion color grade test.",
+    tag: "#Visuals",
+    video: "https://test-videos.co.uk/vids/jellyfish/mp4/h264/720/Jellyfish_720_10s_1MB.mp4",
+    media: "https://test-videos.co.uk/vids/jellyfish/mp4/h264/720/Jellyfish_720_10s_1MB.mp4",
+    mediaIsVideo: true,
+    track: "Snooze — SZA",
+    soundUrl: TRENDING_SOUNDS[3]!.url,
+    views: 15900,
+    likes: 1410,
+    shares: 94,
+    comments: [{ id: "c-9", user: USER_MAP.nala, text: "Unreal tones on this cut." }],
+  },
+  {
+    id: "post-10",
+    user: USER_MAP.yung,
+    lane: "laughs",
+    kind: "video",
+    audience: "public",
+    time: "10h ago",
+    caption: "3D motion test before dropping tonight's main reel.",
+    tag: "#Animation",
+    video: "https://media.w3.org/2010/05/sintel/trailer.mp4",
+    media: "https://media.w3.org/2010/05/sintel/trailer.mp4",
+    mediaIsVideo: true,
+    track: "Calm Down — Rema & Selena Gomez",
+    soundUrl: TRENDING_SOUNDS[4]!.url,
+    views: 32100,
+    likes: 2890,
+    shares: 215,
+    comments: [{ id: "c-10", user: USER_MAP.dre, text: "Cinema mode activated!" }],
+  },
+  {
+    id: "post-11",
+    user: USER_MAP.dre,
+    lane: "circle",
+    kind: "video",
+    audience: "public",
+    time: "12h ago",
+    caption: "Afternoon energy check — keep scrolling, more drops coming.",
+    tag: "#FYP",
+    video: "https://samplelib.com/lib/preview/mp4/sample-30s.mp4",
+    media: "https://samplelib.com/lib/preview/mp4/sample-30s.mp4",
+    mediaIsVideo: true,
+    track: "Tanzania (feat. Sino Msolo) — Uncle Waffles & Tony Duardo",
+    soundUrl: TRENDING_SOUNDS[6]!.url,
+    views: 11200,
+    likes: 960,
+    shares: 67,
+    comments: [],
+  },
+  {
+    id: "post-12",
+    user: USER_MAP.haha,
+    lane: "laughs",
+    kind: "video",
+    audience: "public",
+    time: "14h ago",
+    caption: "Weekend crew warmup — wait till the drop kicks in.",
+    tag: "#Comedy",
+    video: "https://media.w3.org/2010/05/bunny/trailer.mp4",
+    media: "https://media.w3.org/2010/05/bunny/trailer.mp4",
+    mediaIsVideo: true,
+    track: "Water — Tyla",
+    soundUrl: TRENDING_SOUNDS[0]!.url,
+    views: 19800,
+    likes: 1745,
+    shares: 130,
+    comments: [{ id: "c-12", user: USER_MAP.kito, text: "Always bringing the vibes 😂" }],
+  },
+  {
+    id: "post-13",
+    user: USER_MAP.nala,
+    lane: "music",
+    kind: "video",
+    audience: "public",
+    time: "16h ago",
+    caption: "Golden hour lens flare straight out of the studio.",
+    tag: "#GoldenHour",
+    video:
+      "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4",
+    media:
+      "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4",
+    mediaIsVideo: true,
+    track: "Essence (feat. Tems) — Wizkid",
+    soundUrl: TRENDING_SOUNDS[5]!.url,
+    views: 24300,
+    likes: 2110,
+    shares: 176,
+    comments: [],
+  },
+  {
+    id: "post-14",
+    user: USER_MAP.kito,
+    lane: "mix",
+    kind: "video",
+    audience: "public",
+    time: "18h ago",
+    caption: "Late night chill session with the crew.",
+    tag: "#NightOwls",
+    video: "https://filesamples.com/samples/video/mp4/sample_960x540.mp4",
+    media: "https://filesamples.com/samples/video/mp4/sample_960x540.mp4",
+    mediaIsVideo: true,
+    track: "Late Night Chill LoFi Beats — Lofi Chill Beats",
+    soundUrl: TRENDING_SOUNDS[7]!.url,
+    views: 8740,
+    likes: 690,
+    shares: 41,
+    comments: [],
+  },
+  {
+    id: "post-15",
+    user: USER_MAP.zuri,
+    lane: "circle",
+    kind: "video",
+    audience: "public",
+    time: "1d ago",
+    caption: "Quick street visual from yesterday's walk.",
+    tag: "#StreetCut",
+    video: "https://filesamples.com/samples/video/mp4/sample_640x360.mp4",
+    media: "https://filesamples.com/samples/video/mp4/sample_640x360.mp4",
+    mediaIsVideo: true,
+    track: "City Boys — Burna Boy",
+    soundUrl: TRENDING_SOUNDS[2]!.url,
+    views: 13400,
+    likes: 1085,
+    shares: 78,
     comments: [],
   },
 ];

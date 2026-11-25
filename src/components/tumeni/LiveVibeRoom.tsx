@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BadgeCheck,
   Camera,
@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Eye,
   Heart,
+  ImagePlus,
   Maximize2,
   Mic,
   MicOff,
@@ -19,7 +20,16 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { LIVE_STREAMS, fmt, type LiveChatMsg, type LiveStreamItem, type User } from "./data";
+import {
+  LIVE_STREAMS,
+  STUDIO_FILTERS,
+  computeFilterCss,
+  fmt,
+  type LiveChatMsg,
+  type LiveStreamItem,
+  type StudioFilterOption,
+  type User,
+} from "./data";
 import { Avatar, Waveform } from "./SharedUI";
 
 export type FloatingReaction = {
@@ -29,28 +39,6 @@ export type FloatingReaction = {
 };
 
 const QUICK_REACTIONS = ["🔥", "👑", "💛", "🚀"] as const;
-
-const LIVE_EFFECTS = [
-  { id: "natural", label: "Natural", css: "", overlay: "" },
-  {
-    id: "gold",
-    label: "Gold Glow",
-    css: "sepia-[0.25] saturate-150 brightness-105",
-    overlay: "bg-gradient-to-tr from-[#FFB800]/20 via-transparent to-[#FFB800]/15",
-  },
-  {
-    id: "obsidian",
-    label: "Obsidian",
-    css: "contrast-125 brightness-90 saturate-75",
-    overlay: "bg-[#0A0A0C]/25",
-  },
-  {
-    id: "cyber",
-    label: "Cyber",
-    css: "saturate-150 contrast-115 hue-rotate-[14deg]",
-    overlay: "bg-gradient-to-tr from-sky-500/15 via-transparent to-[#FFB800]/15",
-  },
-] as const;
 
 const SIMULATED_VIEWER_LINES = [
   { user: "@sora.wav", text: "Audio sounds super crisp 🔥" },
@@ -93,17 +81,42 @@ export function LiveVibeRoomSheet({
     kind: "video" | "image";
   } | null>(null);
   const [micMuted, setMicMuted] = useState(false);
-  const [effectIdx, setEffectIdx] = useState(0);
+  const [activeFilterIdx, setActiveFilterIdx] = useState(0);
+  const [filterIntensity, setFilterIntensity] = useState(100);
+  const [showFilters, setShowFilters] = useState(false);
+  const [liveSwipeBadge, setLiveSwipeBadge] = useState<StudioFilterOption | null>(null);
   const [watchVideoFailed, setWatchVideoFailed] = useState(false);
 
   const hostVideoRef = useRef<HTMLVideoElement>(null);
   const hostNativeCamRef = useRef<HTMLInputElement>(null);
+  const hostGalleryRef = useRef<HTMLInputElement>(null);
   const watchVideoRef = useRef<HTMLVideoElement>(null);
   const watchAudioRef = useRef<HTMLAudioElement>(null);
   const hostStreamRef = useRef<MediaStream | null>(null);
-  const touchStartYRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeBadgeTimerRef = useRef<number | null>(null);
 
-  const activeEffect = LIVE_EFFECTS[effectIdx] ?? LIVE_EFFECTS[0]!;
+  const activeFilter = STUDIO_FILTERS[activeFilterIdx] ?? STUDIO_FILTERS[0]!;
+  const activeCssFilter = computeFilterCss(activeFilter, filterIntensity);
+
+  const selectLiveFilter = useCallback((idx: number, showBadge = false) => {
+    const normalized =
+      ((idx % STUDIO_FILTERS.length) + STUDIO_FILTERS.length) % STUDIO_FILTERS.length;
+    setActiveFilterIdx(normalized);
+    if (showBadge) {
+      setLiveSwipeBadge(STUDIO_FILTERS[normalized]!);
+      if (swipeBadgeTimerRef.current) window.clearTimeout(swipeBadgeTimerRef.current);
+      swipeBadgeTimerRef.current = window.setTimeout(() => {
+        setLiveSwipeBadge(null);
+      }, 1200);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (swipeBadgeTimerRef.current) window.clearTimeout(swipeBadgeTimerRef.current);
+    };
+  }, []);
 
   // Live engagement state (viewers, likes, floating hearts, chat)
   const [viewerCount, setViewerCount] = useState(isHostBroadcast ? 1420 : currentStream.viewers);
@@ -181,9 +194,11 @@ export function LiveVibeRoomSheet({
         setHasHostCam(true);
         if (hostVideoRef.current) {
           hostVideoRef.current.srcObject = stream;
+          void hostVideoRef.current.play().catch(() => {});
         }
       } catch {
         if (cancelled) return;
+        hostStreamRef.current = null;
         setHasHostCam(false);
       }
     };
@@ -196,6 +211,17 @@ export function LiveVibeRoomSheet({
       hostStreamRef.current = null;
     };
   }, [isHostBroadcast, facingMode, hostRetryKey]);
+
+  // Dedicated host camera stream attachment effect (prevents blank/black mount race condition)
+  useEffect(() => {
+    const videoEl = hostVideoRef.current;
+    if (isHostBroadcast && hasHostCam && videoEl && hostStreamRef.current) {
+      if (videoEl.srcObject !== hostStreamRef.current) {
+        videoEl.srcObject = hostStreamRef.current;
+      }
+      void videoEl.play().catch(() => {});
+    }
+  }, [isHostBroadcast, hasHostCam, facingMode]);
 
   // Toggle live microphone track on host MediaStream
   useEffect(() => {
@@ -306,14 +332,36 @@ export function LiveVibeRoomSheet({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#0A0A0C]"
       onTouchStart={(e) => {
-        touchStartYRef.current = e.touches[0]?.clientY ?? null;
+        const t = e.touches[0];
+        if (t) touchStartRef.current = { x: t.clientX, y: t.clientY };
       }}
       onTouchEnd={(e) => {
-        const startY = touchStartYRef.current;
-        const endY = e.changedTouches[0]?.clientY;
-        touchStartYRef.current = null;
-        if (startY !== null && endY !== undefined && endY - startY > 90 && !isHostBroadcast) {
+        const start = touchStartRef.current;
+        const t = e.changedTouches[0];
+        touchStartRef.current = null;
+        if (!start || !t) return;
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        if (!isHostBroadcast && dy > 90 && Math.abs(dy) > Math.abs(dx)) {
           onLeave();
+        } else if (isHostBroadcast && Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+          selectLiveFilter(activeFilterIdx + (dx < 0 ? 1 : -1), true);
+        }
+      }}
+      onPointerDown={(e) => {
+        if (isHostBroadcast && e.pointerType === "mouse") {
+          touchStartRef.current = { x: e.clientX, y: e.clientY };
+        }
+      }}
+      onPointerUp={(e) => {
+        if (!isHostBroadcast || e.pointerType !== "mouse") return;
+        const start = touchStartRef.current;
+        touchStartRef.current = null;
+        if (!start) return;
+        const dx = e.clientX - start.x;
+        const dy = e.clientY - start.y;
+        if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+          selectLiveFilter(activeFilterIdx + (dx < 0 ? 1 : -1), true);
         }
       }}
     >
@@ -333,12 +381,26 @@ export function LiveVibeRoomSheet({
           toast.success("Studio backdrop updated");
         }}
       />
+      <input
+        ref={hostGalleryRef}
+        type="file"
+        accept="video/*,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.currentTarget.value = "";
+          if (!f) return;
+          const url = URL.createObjectURL(f);
+          setHostBackdrop({ url, kind: f.type.startsWith("video/") ? "video" : "image" });
+          toast.success("Studio backdrop updated");
+        }}
+      />
 
-      <div className="relative h-dvh w-full max-w-md overflow-hidden bg-[#0A0A0C] sm:aspect-[9/16] sm:h-[94dvh] sm:w-auto sm:rounded-3xl sm:border sm:border-[#222228]">
+      <div className="relative h-dvh w-full max-w-md overflow-hidden bg-[#121218] sm:aspect-[9/16] sm:h-[94dvh] sm:w-auto sm:rounded-3xl sm:border sm:border-[#222228]">
         {/* Full-Screen Vertical Video Stage (Tap anywhere to spawn floating gold/amber hearts) */}
         <div
           onClick={() => spawnReaction("💛", true)}
-          className="relative h-full w-full cursor-pointer select-none bg-[#0A0A0C]"
+          className="relative h-full w-full cursor-pointer select-none bg-[#121218]"
         >
           {isHostBroadcast ? (
             hasHostCam ? (
@@ -347,7 +409,11 @@ export function LiveVibeRoomSheet({
                 autoPlay
                 playsInline
                 muted
-                className={`h-full w-full object-cover transition duration-300 ${activeEffect.css} ${
+                onLoadedMetadata={(e) => {
+                  void e.currentTarget.play().catch(() => {});
+                }}
+                style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                className={`h-full w-full object-cover transition duration-300 ${
                   facingMode === "user" ? "-scale-x-100" : ""
                 }`}
               />
@@ -359,21 +425,24 @@ export function LiveVibeRoomSheet({
                   loop
                   muted
                   playsInline
-                  className={`h-full w-full object-cover transition duration-300 ${activeEffect.css}`}
+                  style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                  className="h-full w-full object-cover transition duration-300"
                 />
               ) : (
                 <img
                   src={hostBackdrop.url}
                   alt="Live broadcast stage"
-                  className={`h-full w-full object-cover transition duration-300 ${activeEffect.css}`}
+                  style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                  className="h-full w-full object-cover transition duration-300"
                 />
               )
             ) : (
               /* Tumeni Studio Broadcast Stage (Zero Permission Wall) */
               <div
-                className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#141418] via-[#0A0A0C] to-[#141418] px-7 text-center transition duration-300 ${activeEffect.css}`}
+                style={{ filter: activeCssFilter !== "none" ? activeCssFilter : undefined }}
+                className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#1A1614] via-[#101016] to-[#141418] px-7 text-center transition duration-300"
               >
-                <div className="pointer-events-none absolute h-80 w-80 rounded-full bg-[#FFB800]/15 blur-3xl" />
+                <div className="pointer-events-none absolute h-80 w-80 rounded-full bg-[#FFB800]/18 blur-3xl" />
                 <div className="relative flex items-center justify-center">
                   <span className="animate-ring-pulse absolute h-36 w-36 rounded-full border border-[#FFB800]/40" />
                   <span className="animate-ring-pulse absolute h-48 w-48 rounded-full border border-[#FFB800]/20 [animation-delay:0.6s]" />
@@ -424,8 +493,18 @@ export function LiveVibeRoomSheet({
           )}
 
           {/* Active Live Filter Overlay */}
-          {isHostBroadcast && activeEffect.overlay && (
-            <div className={`pointer-events-none absolute inset-0 ${activeEffect.overlay}`} />
+          {isHostBroadcast && activeFilter.overlay && (
+            <div
+              style={{ opacity: filterIntensity / 100 }}
+              className={`pointer-events-none absolute inset-0 ${activeFilter.overlay}`}
+            />
+          )}
+
+          {isHostBroadcast && liveSwipeBadge && (
+            <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#FFB800]/50 bg-[#0A0A0C]/80 px-5 py-2 text-sm font-bold text-foreground shadow-[0_0_24px_rgba(255,184,0,0.35)] backdrop-blur-md">
+              <span className="mr-1.5">{liveSwipeBadge.emoji}</span>
+              <span>{liveSwipeBadge.label}</span>
+            </div>
           )}
 
           {/* Cinematic Edge Scrims */}
@@ -435,17 +514,30 @@ export function LiveVibeRoomSheet({
         {/* Top Bar: Preview Camera Banner (Host Fallback) + Host/Follow Pill + LIVE Viewer Counter + Controls */}
         <header className="absolute inset-x-0 top-0 z-20 space-y-2.5 p-4">
           {isHostBroadcast && !hasHostCam && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleTryDeviceCamera();
-              }}
-              className="flex min-h-[38px] w-full items-center justify-center gap-2 rounded-full border border-[#FFB800]/45 bg-[#141418]/90 px-3.5 text-[11px] font-semibold text-[#FFB800] backdrop-blur-md transition hover:border-[#FFB800]"
-            >
-              <Camera className="h-3.5 w-3.5 shrink-0" />
-              <span>Preview Mode · Tap here to try device camera</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleTryDeviceCamera();
+                }}
+                className="flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-full border border-[#FFB800]/45 bg-[#141418]/90 px-3 text-[11px] font-semibold text-[#FFB800] backdrop-blur-md transition hover:border-[#FFB800]"
+              >
+                <Camera className="h-3.5 w-3.5 shrink-0" />
+                <span>Open Phone Camera</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  hostGalleryRef.current?.click();
+                }}
+                className="flex min-h-[38px] items-center justify-center gap-1.5 rounded-full border border-[#222228] bg-[#141418]/90 px-3 text-[11px] font-semibold text-foreground backdrop-blur-md transition hover:border-[#FFB800]"
+              >
+                <ImagePlus className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
+                <span>Pick from Gallery</span>
+              </button>
+            </div>
           )}
 
           <div className="flex items-center justify-between gap-2">
@@ -666,7 +758,60 @@ export function LiveVibeRoomSheet({
             </button>
           </form>
 
-          {/* Host Broadcast Controls: Mute Mic, Flip Camera, Effects, End LIVE */}
+          {/* Host Filter Swatch Carousel & Intensity Slider */}
+          {isHostBroadcast && showFilters && (
+            <div className="space-y-2 rounded-2xl border border-[#222228] bg-[#141418]/95 p-3 backdrop-blur-xl">
+              {activeFilter.id !== "normal" && (
+                <div className="flex items-center gap-2.5 px-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground">Strength</span>
+                  <input
+                    type="range"
+                    aria-label="Live filter intensity"
+                    min={0}
+                    max={100}
+                    value={filterIntensity}
+                    onChange={(e) => setFilterIntensity(Number(e.target.value))}
+                    className="h-1 flex-1 accent-[#FFB800]"
+                  />
+                  <span className="w-8 text-right text-[10px] font-bold tabular-nums text-[#FFB800]">
+                    {filterIntensity}%
+                  </span>
+                </div>
+              )}
+              <div className="no-scrollbar flex items-center gap-3 overflow-x-auto py-1">
+                {STUDIO_FILTERS.map((f, idx) => {
+                  const selected = idx === activeFilterIdx;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => selectLiveFilter(idx)}
+                      className="flex shrink-0 flex-col items-center gap-1"
+                    >
+                      <span
+                        className={`flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br ${f.swatch} text-sm transition ${
+                          selected
+                            ? "scale-105 ring-2 ring-[#FFB800] ring-offset-2 ring-offset-[#141418]"
+                            : "opacity-80 hover:opacity-100"
+                        }`}
+                      >
+                        {f.emoji}
+                      </span>
+                      <span
+                        className={`max-w-[60px] truncate text-[10px] font-semibold ${
+                          selected ? "text-[#FFB800]" : "text-muted-foreground"
+                        }`}
+                      >
+                        {f.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Host Broadcast Controls: Mute Mic, Flip Camera, Filters, End LIVE */}
           {isHostBroadcast && (
             <div className="grid grid-cols-4 gap-1.5 pt-1">
               <button
@@ -699,19 +844,17 @@ export function LiveVibeRoomSheet({
 
               <button
                 type="button"
-                onClick={() => {
-                  const nextIdx = (effectIdx + 1) % LIVE_EFFECTS.length;
-                  setEffectIdx(nextIdx);
-                  toast(`Effect: ${LIVE_EFFECTS[nextIdx]!.label}`);
-                }}
+                onClick={() => setShowFilters((s) => !s)}
                 className={`flex min-h-[44px] items-center justify-center gap-1 rounded-2xl border px-2 text-[11px] font-semibold transition ${
-                  effectIdx > 0
+                  showFilters || activeFilterIdx > 0
                     ? "border-[#FFB800] bg-[#FFB800]/15 text-[#FFB800]"
                     : "border-[#222228] bg-[#141418] text-foreground hover:border-[#FFB800]"
                 }`}
               >
                 <Sparkles className="h-3.5 w-3.5 text-[#FFB800]" />
-                <span className="truncate">{activeEffect.label}</span>
+                <span className="truncate">
+                  {activeFilterIdx > 0 ? activeFilter.label : "Filters"}
+                </span>
               </button>
 
               <button

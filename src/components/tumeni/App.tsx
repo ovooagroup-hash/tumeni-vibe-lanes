@@ -282,7 +282,10 @@ function PostCard({
             <video
               ref={videoRef}
               src={videoSrc}
-              className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${post.filterClass ?? ""}`}
+              style={post.filterCss ? { filter: post.filterCss } : undefined}
+              className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${
+                post.filterCss ? "" : (post.filterClass ?? "")
+              }`}
               loop
               muted={muted || !!post.soundUrl || !!post.soundYoutubeId}
               playsInline
@@ -379,7 +382,10 @@ function PostCard({
             src={post.media}
             alt={post.caption || "Photo drop"}
             referrerPolicy="no-referrer"
-            className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${post.filterClass ?? ""}`}
+            style={post.filterCss ? { filter: post.filterCss } : undefined}
+            className={`aspect-[4/5] w-full bg-[#0A0A0C] object-cover ${
+              post.filterCss ? "" : (post.filterClass ?? "")
+            }`}
           />
         </div>
       )}
@@ -1434,6 +1440,7 @@ export function TumeniApp({
             mediaStorageKey,
             isVideo,
             filterClass,
+            filterCss,
             effectId,
             playbackSpeed,
             overlays,
@@ -1464,6 +1471,7 @@ export function TumeniApp({
               track: track ?? (kind === "audio" ? `${setup.name} — new sound` : undefined),
               duration: kind === "audio" ? "0:30" : undefined,
               filterClass,
+              filterCss,
               effectId,
               playbackSpeed,
               overlays,
@@ -2266,7 +2274,8 @@ function Reel({
           onTimeUpdate={(e) =>
             setProgress((e.currentTarget.currentTime / (e.currentTarget.duration || 1)) * 100)
           }
-          className={`h-full w-full object-cover ${post.filterClass ?? ""}`}
+          style={post.filterCss ? { filter: post.filterCss } : undefined}
+          className={`h-full w-full object-cover ${post.filterCss ? "" : (post.filterClass ?? "")}`}
         />
       ) : post.media ? (
         <img
@@ -2274,7 +2283,8 @@ function Reel({
           alt={post.caption}
           onClick={tap}
           referrerPolicy="no-referrer"
-          className={`h-full w-full object-cover ${post.filterClass ?? ""}`}
+          style={post.filterCss ? { filter: post.filterCss } : undefined}
+          className={`h-full w-full object-cover ${post.filterCss ? "" : (post.filterClass ?? "")}`}
         />
       ) : (
         <div
