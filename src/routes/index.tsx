@@ -1,17 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { onAuthStateChanged, signOut } from "firebase/auth";
 import { Auth } from "@/components/tumeni/Auth";
 import { TumeniApp } from "@/components/tumeni/App";
 import { readSetup, type SetupProfile } from "@/components/tumeni/onboarding";
 import { upsertAccountRecord } from "@/components/tumeni/storage";
 import { supabase } from "@/integrations/supabase/client";
-import { auth, testFirestoreConnection } from "@/lib/firebase";
-import { fetchCloudProfile, saveCloudProfile } from "@/lib/tumeni-db";
 
 const hasSupabaseConfig = Boolean(
   import.meta.env["VITE_SUPABASE_URL"] && import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"],
 );
+
+const GUEST_PROFILE: SetupProfile = {
+  name: "Guest Viewer",
+  handle: "@guest",
+  avatar: "",
+  bio: "Watching videos on Tumeni.",
+  location: "",
+  city: "",
+  interests: ["Music & Sound", "Comedy & Skits"],
+  following: [],
+  friends: [],
+};
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -34,7 +43,7 @@ export const Route = createFileRoute("/")({
 });
 
 function readProfileFromSupabaseUser(
-  uid: string,
+  _uid: string,
   metadata: Record<string, unknown> | undefined,
 ): SetupProfile | null {
   const metaProfile = metadata?.["tumeni_profile"];
@@ -42,143 +51,55 @@ function readProfileFromSupabaseUser(
     const parsed = readSetup(JSON.stringify(metaProfile));
     if (parsed) return parsed;
   }
-  try {
-    return readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function Index() {
   const [account, setAccount] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [setup, setSetup] = useState<SetupProfile | null>(null);
+  const [guestMode, setGuestMode] = useState(false);
   const [storageError, setStorageError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    let supabaseHasUser = false;
 
-    void testFirestoreConnection();
+    if (!hasSupabaseConfig) {
+      setAccount(null);
+      setSetup(null);
+      setReady(true);
+      return;
+    }
 
-    const hydrateServerSession = async (): Promise<boolean> => {
-      try {
-        const res = await fetch("/api/auth/session", { credentials: "same-origin" });
-        if (!res.ok || cancelled) return false;
-        const data = (await res.json()) as {
-          user?: { uid?: string; email?: string } | null;
-          profile?: SetupProfile | null;
-        };
-        const uid = data.user?.uid;
-        if (!uid) return false;
-
-        setAccount(uid);
-        if (data.profile) {
-          try {
-            localStorage.setItem(`tumeni-setup:${uid}`, JSON.stringify(data.profile));
-            localStorage.setItem("tumeni-account", uid);
-            upsertAccountRecord(uid, data.profile);
-          } catch {
-            /* Browser storage optional when server profile succeeds. */
-          }
-          setSetup(data.profile);
-        } else {
-          const cached = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
-          setSetup(cached);
-        }
-        setReady(true);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    const hydrateFallbackAuth = async () => {
-      const fbUser = auth.currentUser;
-      if (!fbUser) {
-        const hasServerSession = await hydrateServerSession();
-        if (cancelled) return;
-        if (!hasServerSession) {
-          setAccount(null);
-          setSetup(null);
-          setReady(true);
-        }
-        return;
-      }
-
-      if (!fbUser.emailVerified) {
-        setAccount(fbUser.uid);
+    const applySessionUser = (
+      user: { id: string; user_metadata?: Record<string, unknown> } | null,
+    ) => {
+      if (cancelled) return;
+      if (!user) {
+        setAccount(null);
         setSetup(null);
         setReady(true);
         return;
       }
 
-      setAccount(fbUser.uid);
-
+      const uid = user.id;
       try {
-        const cloud = await fetchCloudProfile(fbUser.uid);
-        if (cancelled) return;
-        if (cloud?.profile) {
-          try {
-            localStorage.setItem(`tumeni-setup:${fbUser.uid}`, JSON.stringify(cloud.profile));
-            localStorage.setItem("tumeni-account", fbUser.uid);
-            upsertAccountRecord(fbUser.uid, cloud.profile);
-          } catch {
-            /* Browser storage optional when cloud profile succeeds. */
-          }
-          setSetup(cloud.profile);
-          setReady(true);
-          return;
+        const storedAccount = localStorage.getItem("tumeni-account");
+        if (storedAccount && storedAccount !== uid) {
+          localStorage.removeItem("tumeni-account");
         }
       } catch {
-        /* Fallback to local cached profile if offline. */
+        /* Ignore browser storage errors. */
       }
 
-      try {
-        const cached = readSetup(localStorage.getItem(`tumeni-setup:${fbUser.uid}`));
-        if (cached) {
-          void saveCloudProfile(fbUser.uid, fbUser.email ?? "", cached);
-          setSetup(cached);
-          setReady(true);
-          return;
-        }
-      } catch {
-        setStorageError(true);
-      }
-
-      setSetup(null);
-      setReady(true);
-    };
-
-    const unsubscribeFirebase = onAuthStateChanged(auth, () => {
-      if (cancelled || supabaseHasUser) return;
-      void hydrateFallbackAuth();
-    });
-
-    if (!hasSupabaseConfig) {
-      return () => {
-        cancelled = true;
-        unsubscribeFirebase();
-      };
-    }
-
-    const applySupabaseUser = (
-      user: { id: string; user_metadata?: Record<string, unknown> } | null,
-    ) => {
-      if (cancelled) return;
-      if (!user) {
-        supabaseHasUser = false;
-        void hydrateFallbackAuth();
-        return;
-      }
-      supabaseHasUser = true;
-      setAccount(user.id);
-      const profile = readProfileFromSupabaseUser(user.id, user.user_metadata);
+      setGuestMode(false);
+      setAccount(uid);
+      const profile = readProfileFromSupabaseUser(uid, user.user_metadata);
       if (profile) {
         try {
-          localStorage.setItem(`tumeni-setup:${user.id}`, JSON.stringify(profile));
-          localStorage.setItem("tumeni-account", user.id);
-          upsertAccountRecord(user.id, profile);
+          localStorage.setItem(`tumeni-setup:${uid}`, JSON.stringify(profile));
+          localStorage.setItem("tumeni-account", uid);
+          upsertAccountRecord(uid, profile);
         } catch {
           /* Browser storage optional when cloud metadata succeeds. */
         }
@@ -187,27 +108,27 @@ function Index() {
       setReady(true);
     };
 
-    void supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        applySupabaseUser(data.session?.user ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          supabaseHasUser = false;
-          void hydrateFallbackAuth();
-        }
-      });
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      applySupabaseUser(session?.user ?? null);
+      applySessionUser(session?.user ?? null);
     });
+
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        applySessionUser(data.session?.user ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAccount(null);
+          setSetup(null);
+          setReady(true);
+        }
+      });
 
     return () => {
       cancelled = true;
-      unsubscribeFirebase();
       subscription.unsubscribe();
     };
   }, []);
@@ -221,26 +142,11 @@ function Index() {
     } catch {
       setStorageError(true);
     }
+    setGuestMode(false);
     setSetup(profile);
     setAccount(id);
 
-    if (id.startsWith("srv_")) {
-      void fetch("/api/auth/profile", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ profile }),
-      }).catch(() => {});
-      return;
-    }
-
-    const fbUser = auth.currentUser;
-    if (fbUser && fbUser.uid === id && fbUser.emailVerified) {
-      void saveCloudProfile(id, fbUser.email ?? "", profile).catch(() => {});
-      return;
-    }
-
-    if (hasSupabaseConfig) {
+    if (hasSupabaseConfig && !id.startsWith("phone_")) {
       void supabase.auth.updateUser({ data: { tumeni_profile: profile } }).catch(() => {});
     }
   };
@@ -267,20 +173,27 @@ function Index() {
             } catch {
               /* Continue logout. */
             }
-            if (hasSupabaseConfig) {
+            if (hasSupabaseConfig && !account.startsWith("phone_")) {
               void supabase.auth.signOut().catch(() => {});
             }
-            void fetch("/api/auth/logout", {
-              method: "POST",
-              credentials: "same-origin",
-            }).catch(() => {});
-            void signOut(auth).catch(() => {});
+            setGuestMode(false);
             setAccount(null);
             setSetup(null);
           }}
         />
+      ) : guestMode ? (
+        <TumeniApp
+          account="guest"
+          setup={GUEST_PROFILE}
+          onSetupChange={() => {}}
+          onLogout={() => setGuestMode(false)}
+        />
       ) : (
-        <Auth initialAccount={account} onLogin={saveSetup} />
+        <Auth
+          initialAccount={account}
+          onLogin={saveSetup}
+          onGuestBrowse={() => setGuestMode(true)}
+        />
       )}
     </>
   );

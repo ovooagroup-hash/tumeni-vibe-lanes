@@ -20,14 +20,7 @@ function NotFoundComponent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const p = window.location.pathname;
-    if (
-      p.startsWith("/~oauth") ||
-      p.startsWith("/__/auth") ||
-      p.startsWith("/auth") ||
-      p.startsWith("/login") ||
-      p.startsWith("/signin") ||
-      p.startsWith("/signup")
-    ) {
+    if (p.startsWith("/login") || p.startsWith("/signin") || p.startsWith("/signup")) {
       void router.navigate({ to: "/", replace: true });
     }
   }, [router]);

@@ -195,48 +195,6 @@ export async function listDirectoryProfiles(userCity?: string): Promise<Suggeste
     }
   }
 
-  try {
-    const res = await fetch("/api/auth/directory", { credentials: "same-origin" });
-    if (res.ok) {
-      const data = (await res.json()) as {
-        profiles?: Array<{
-          uid?: string;
-          name?: string;
-          handle?: string;
-          avatar?: string;
-          bio?: string;
-          vibeTag?: string;
-          location?: string;
-          city?: string;
-          followers?: number;
-        }>;
-      };
-      for (const p of data.profiles ?? []) {
-        if (!p.uid || seenIds.has(p.uid) || !p.name || !p.handle) continue;
-        seenIds.add(p.uid);
-        const cityInfo = normalizeCity(p.location || p.city || "");
-        items.push({
-          user: {
-            id: p.uid,
-            name: p.name,
-            handle: p.handle,
-            avatar: p.avatar ?? "",
-          },
-          bio: p.bio || "Creator on tumeni.",
-          vibeTag: p.vibeTag || "#Creator",
-          location: p.location || p.city || undefined,
-          city: p.city || undefined,
-          mutuals: 0,
-          followers: p.followers ?? 0,
-          nearYou: Boolean(myCityLower && cityInfo.cityLower && cityInfo.cityLower === myCityLower),
-          sharedWith: [],
-        });
-      }
-    }
-  } catch {
-    /* Optional server directory lookup. */
-  }
-
   items.sort((a, b) => Number(Boolean(b.nearYou)) - Number(Boolean(a.nearYou)));
   return items;
 }

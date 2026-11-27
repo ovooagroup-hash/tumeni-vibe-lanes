@@ -1297,6 +1297,15 @@ export function TumeniApp({
                     <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[#FFB800]" />
                   )}
                 </button>
+                {account === "guest" && (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="min-h-[36px] shrink-0 whitespace-nowrap rounded-lg bg-[#FFB800] px-3 text-xs font-semibold text-[#0A0A0C] transition hover:bg-[#FFB800]/90"
+                  >
+                    Sign in
+                  </button>
+                )}
               </div>
             </header>
 
