@@ -285,11 +285,13 @@ export function VideoStageDecorations({
 
 export function StudioCameraModal({
   launchMode = "camera",
+  initialSound = null,
   me,
   onClose,
   onPublish,
 }: {
   launchMode?: StudioLaunchMode;
+  initialSound?: SoundTrack | null | undefined;
   me: User;
   onClose: () => void;
   onPublish: (p: {
@@ -351,10 +353,16 @@ export function StudioCameraModal({
   const [soundQuery, setSoundQuery] = useState("");
   const [onlineTracks, setOnlineTracks] = useState<SoundTrack[]>([]);
   const [loadingSounds, setLoadingSounds] = useState(false);
-  const [selectedSound, setSelectedSound] = useState<SoundTrack | null>(null);
+  const [selectedSound, setSelectedSound] = useState<SoundTrack | null>(initialSound ?? null);
   const [previewSoundId, setPreviewSoundId] = useState<string | null>(null);
   const [originalVolume, setOriginalVolume] = useState(100);
   const [musicVolume, setMusicVolume] = useState(100);
+
+  useEffect(() => {
+    if (initialSound) {
+      setSelectedSound(initialSound);
+    }
+  }, [initialSound]);
   const soundAudioRef = useRef<HTMLAudioElement>(null);
   const reviewSoundRef = useRef<HTMLAudioElement>(null);
   const localAudioInputRef = useRef<HTMLInputElement>(null);

@@ -1,5 +1,17 @@
 import { useState } from "react";
-import { BadgeCheck, Check, MapPin, MessageCircle, Search, UserPlus, Users, X } from "lucide-react";
+import {
+  BadgeCheck,
+  Check,
+  Copy,
+  MapPin,
+  MessageCircle,
+  Search,
+  Share2,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
 import { CREWS, fmt, type Crew, type SuggestedPerson, type User } from "./data";
 import { normalizeCity } from "./onboarding";
 import { Avatar } from "./SharedUI";
@@ -57,10 +69,98 @@ function MutualFriendsLine({ person }: { person: SuggestedPerson }) {
   );
 }
 
+export function InviteCrewCard({
+  myHandle,
+  myName,
+  compact = false,
+}: {
+  myHandle?: string | undefined;
+  myName?: string | undefined;
+  compact?: boolean | undefined;
+}) {
+  const cleanHandle = (myHandle ?? "@creator").replace(/^@/, "");
+  const profileUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/@${cleanHandle}` : "";
+
+  const handleShareInvite = async () => {
+    const shareText = `Join ${myName || "me"} (@${cleanHandle}) on tumeni. — drop videos, catch live vibes & build with your crew: ${profileUrl}`;
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: "Join me on tumeni.",
+          text: shareText,
+          url: profileUrl,
+        });
+        return;
+      } catch (err) {
+        if ((err as { name?: string })?.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard?.writeText(shareText);
+      toast.success("Invite message copied — paste it in WhatsApp or Messages!");
+    } catch {
+      toast.success("Copied to clipboard!");
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard?.writeText(profileUrl);
+    } catch {
+      /* ignore clipboard error */
+    }
+    toast.success("Copied to clipboard!");
+  };
+
+  return (
+    <div
+      className={`border border-[#222228] bg-[#141418] ${
+        compact ? "rounded-3xl p-4" : "rounded-3xl p-5 sm:p-6"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#FFB800]/30 bg-[#FFB800]/10 text-[#FFB800]">
+          <Users className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-bold text-foreground sm:text-base">
+            You&apos;re one of the first creators on tumeni.
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Invite your crew to be the first to view and react to your drops.
+          </p>
+        </div>
+      </div>
+
+      <div className={`mt-4 flex flex-col gap-2 ${compact ? "" : "sm:flex-row"}`}>
+        <button
+          type="button"
+          onClick={() => void handleShareInvite()}
+          className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-[#FFB800] px-4 text-xs font-bold text-[#0A0A0C] transition hover:brightness-110 active:scale-[0.98]"
+        >
+          <Share2 className="h-4 w-4 shrink-0" />
+          <span>📲 Invite via WhatsApp / Messages</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleCopyLink()}
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[#222228] bg-[#0A0A0C] px-4 text-xs font-semibold text-foreground transition hover:border-[#FFB800]/60 active:scale-[0.98]"
+        >
+          <Copy className="h-4 w-4 shrink-0 text-[#FFB800]" />
+          <span>🔗 Copy Profile Link</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function CircleRadarCarousel({
   suggestions,
   tappedIds,
   userLocation,
+  myHandle,
+  myName,
   onEditLocation,
   onTapIn,
   onDismiss,
@@ -69,12 +169,20 @@ export function CircleRadarCarousel({
   suggestions: SuggestedPerson[];
   tappedIds: string[];
   userLocation?: string | undefined;
+  myHandle?: string | undefined;
+  myName?: string | undefined;
   onEditLocation?: (() => void) | undefined;
   onTapIn: (id: string, name: string) => void;
   onDismiss: (id: string) => void;
   onSeeAll: () => void;
 }) {
-  if (suggestions.length === 0) return null;
+  if (suggestions.length === 0) {
+    return (
+      <section aria-label="Invite your crew" className="px-4 sm:px-0">
+        <InviteCrewCard myHandle={myHandle} myName={myName} />
+      </section>
+    );
+  }
 
   const { city } = normalizeCity(userLocation ?? "");
   const ordered = [...suggestions].sort(
@@ -209,6 +317,8 @@ export function CircleRadarHub({
   onJoinCrew,
   onOpenCrewChat,
   onOpenMyProfile,
+  myHandle,
+  myName,
 }: {
   activeFilter: RadarFilter;
   setActiveFilter: (filter: RadarFilter) => void;
@@ -227,6 +337,8 @@ export function CircleRadarHub({
   onJoinCrew: (crew: Crew) => void;
   onOpenCrewChat: () => void;
   onOpenMyProfile?: (() => void) | undefined;
+  myHandle?: string | undefined;
+  myName?: string | undefined;
 }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
@@ -374,24 +486,43 @@ export function CircleRadarHub({
       {/* Connection Cards */}
       <section className="mt-4 space-y-3" aria-label="Connections list">
         {activeList.length === 0 ? (
-          <div className="rounded-3xl border border-[#222228] bg-[#141418] px-6 py-12 text-center">
-            <p className="text-sm font-medium text-foreground">
-              {needle
-                ? `No matches for "${q}"`
-                : activeFilter === "nearby"
-                  ? `No creators found near ${city || "your city"} yet.`
-                  : activeFilter === "friends"
-                    ? "You haven't added friends yet."
-                    : activeFilter === "requests"
-                      ? "No pending friend requests right now."
-                      : "No new suggestions right now."}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {activeFilter === "friends"
-                ? "Tap Suggestions to add creators into your circle."
-                : "Try checking another tab or searching by city or name."}
-            </p>
-          </div>
+          needle ? (
+            <div className="rounded-3xl border border-[#222228] bg-[#141418] px-6 py-10 text-center">
+              <p className="text-sm font-medium text-foreground">
+                No registered creators match &ldquo;{q}&rdquo;
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Search finds real accounts registered on tumeni. Invite your crew below to grow the
+                network.
+              </p>
+              <div className="mt-5 text-left">
+                <InviteCrewCard myHandle={myHandle} myName={myName} />
+              </div>
+            </div>
+          ) : activeFilter === "friends" ? (
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-[#222228] bg-[#141418] px-6 py-10 text-center">
+                <p className="text-sm font-medium text-foreground">
+                  You haven&apos;t added friends yet.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Invite friends to join tumeni. or check Suggestions as new creators register.
+                </p>
+              </div>
+              <InviteCrewCard myHandle={myHandle} myName={myName} />
+            </div>
+          ) : activeFilter === "requests" ? (
+            <div className="rounded-3xl border border-[#222228] bg-[#141418] px-6 py-10 text-center">
+              <p className="text-sm font-medium text-foreground">
+                No pending friend requests right now.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Real friend requests from registered creators will appear here.
+              </p>
+            </div>
+          ) : (
+            <InviteCrewCard myHandle={myHandle} myName={myName} />
+          )
         ) : (
           activeList.map((person) => {
             const { user } = person;

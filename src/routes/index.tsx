@@ -38,13 +38,50 @@ function Index() {
     void testFirestoreConnection();
 
     let cancelled = false;
+
+    const hydrateServerSession = async (): Promise<boolean> => {
+      try {
+        const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+        if (!res.ok || cancelled) return false;
+        const data = (await res.json()) as {
+          user?: { uid?: string; email?: string } | null;
+          profile?: SetupProfile | null;
+        };
+        const uid = data.user?.uid;
+        if (!uid) return false;
+
+        setAccount(uid);
+        if (data.profile) {
+          try {
+            localStorage.setItem(`tumeni-setup:${uid}`, JSON.stringify(data.profile));
+            localStorage.setItem("tumeni-account", uid);
+            upsertAccountRecord(uid, data.profile);
+          } catch {
+            /* Browser storage optional when server profile succeeds. */
+          }
+          setSetup(data.profile);
+        } else {
+          const cached = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
+          setSetup(cached);
+        }
+        setReady(true);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (cancelled) return;
 
       if (!fbUser) {
-        setAccount(null);
-        setSetup(null);
-        setReady(true);
+        const hasServerSession = await hydrateServerSession();
+        if (cancelled) return;
+        if (!hasServerSession) {
+          setAccount(null);
+          setSetup(null);
+          setReady(true);
+        }
         return;
       }
 
@@ -110,13 +147,23 @@ function Index() {
     setSetup(profile);
     setAccount(id);
 
+    if (id.startsWith("srv_")) {
+      void fetch("/api/auth/profile", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ profile }),
+      }).catch(() => {});
+      return;
+    }
+
     const fbUser = auth.currentUser;
     if (fbUser && fbUser.uid === id && fbUser.emailVerified) {
       void saveCloudProfile(id, fbUser.email ?? "", profile).catch(() => {});
     }
   };
 
-  if (!ready) return <div className="min-h-dvh bg-background" />;
+  if (!ready) return <div className="min-h-dvh bg-[#0A0A0C]" />;
   return (
     <>
       {storageError && (
@@ -138,6 +185,10 @@ function Index() {
             } catch {
               /* Continue logout. */
             }
+            void fetch("/api/auth/logout", {
+              method: "POST",
+              credentials: "same-origin",
+            }).catch(() => {});
             void signOut(auth).catch(() => {});
             setAccount(null);
             setSetup(null);

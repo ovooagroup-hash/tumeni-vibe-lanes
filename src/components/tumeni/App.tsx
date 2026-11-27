@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Bell,
@@ -43,19 +43,21 @@ import {
   SEED_CHATS,
   PROFILES,
   GRID,
-  SUGGESTED_PEOPLE,
-  FRIEND_REQUESTS,
+  CREATOR_PROFILES,
   CREWS,
   POST_AUDIENCES,
   LIVE_STREAMS,
   getVisiblePosts,
+  toSoundTrackFromPost,
   fmt,
   type Audience,
   type Comment,
+  type CreatorProfileMeta,
   type Kind,
   type Lane,
   type Post,
   type Chat,
+  type SoundTrack,
   type User,
   type GridItem,
   type Crew,
@@ -77,7 +79,12 @@ import {
 } from "@/lib/tumeni-db";
 import { StoriesBar } from "./Stories";
 import { Avatar, Waveform } from "./SharedUI";
-import { CircleRadarCarousel, CircleRadarHub, type RadarFilter } from "./CircleRadar";
+import {
+  CircleRadarCarousel,
+  CircleRadarHub,
+  InviteCrewCard,
+  type RadarFilter,
+} from "./CircleRadar";
 import { MessagesList, CrewChatRoom } from "./CrewChat";
 import { LiveMiniPlayer, LiveVibeRoomSheet } from "./LiveVibeRoom";
 import { StudioCameraModal, VideoStageDecorations, type StudioLaunchMode } from "./StudioCamera";
@@ -149,7 +156,7 @@ function FacebookActions({
         className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-semibold tabular-nums text-muted-foreground transition hover:bg-[#0A0A0C] hover:text-foreground active:scale-95"
       >
         <MessageCircle className="h-4 w-4 shrink-0" />
-        <span>{fmt(post.comments.length)}</span>
+        <span>{fmt((post.commentCount ?? 0) + post.comments.length)}</span>
       </button>
 
       <button
@@ -190,6 +197,8 @@ function PostCard({
   onShare,
   onSave,
   onOpen,
+  onOpenCreator,
+  onOpenSound,
 }: {
   post: Post;
   muted: boolean;
@@ -201,6 +210,8 @@ function PostCard({
   onShare: () => void;
   onSave: () => void;
   onOpen?: (() => void) | undefined;
+  onOpenCreator?: ((user: User) => void) | undefined;
+  onOpenSound?: ((post: Post) => void) | undefined;
 }) {
   const playerId = `feed-${post.id}`;
   const [playing, setPlaying] = useState(false);
@@ -379,9 +390,20 @@ function PostCard({
       className="animate-rise border-b border-[#222228] bg-[#141418] py-3 sm:rounded-3xl sm:border sm:p-4"
     >
       <header className="flex items-center gap-3 px-4 py-1.5 sm:px-0">
-        <Avatar src={post.user.avatar} name={post.user.name} handle={post.user.handle} ring />
+        <button
+          type="button"
+          onClick={() => onOpenCreator?.(post.user)}
+          aria-label={`View ${post.user.name} profile`}
+          className="shrink-0 rounded-full text-left transition active:scale-95"
+        >
+          <Avatar src={post.user.avatar} name={post.user.name} handle={post.user.handle} ring />
+        </button>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5 font-medium text-foreground">
+          <button
+            type="button"
+            onClick={() => onOpenCreator?.(post.user)}
+            className="flex max-w-full flex-wrap items-center gap-1.5 text-left font-medium text-foreground transition hover:text-[#FFB800]"
+          >
             <span className="truncate">{post.user.name}</span>
             {post.user.verified && (
               <BadgeCheck className="h-4 w-4 shrink-0 fill-[#FFB800] text-[#0A0A0C]" />
@@ -391,9 +413,15 @@ function PostCard({
                 is feeling <span className="font-medium text-[#FFB800]">{post.mood}</span>
               </span>
             )}
-          </div>
+          </button>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>{post.user.handle}</span>
+            <button
+              type="button"
+              onClick={() => onOpenCreator?.(post.user)}
+              className="hover:text-[#FFB800]"
+            >
+              {post.user.handle}
+            </button>
             <span aria-hidden="true">·</span>
             <span>{post.time}</span>
             <span aria-hidden="true">·</span>
@@ -527,8 +555,16 @@ function PostCard({
             )}
           </div>
 
-          <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-[#0A0A0C]/65 px-3 py-1.5 backdrop-blur">
+          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenSound?.(post);
+              }}
+              aria-label={`Use sound ${post.track ?? post.user.handle}`}
+              className="flex min-h-[36px] min-w-0 flex-1 items-center gap-2 rounded-full bg-[#0A0A0C]/70 px-3 py-1.5 text-left backdrop-blur transition hover:bg-[#141418]"
+            >
               <Music className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div
@@ -546,14 +582,25 @@ function PostCard({
                   )}
                 </div>
               </div>
-            </div>
-            <div
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-[#222228] bg-[#141418] text-[#FFB800] shadow-md ${
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenSound?.(post);
+              }}
+              aria-label="Open sound details"
+              className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[#FFB800]/70 bg-[#141418] text-[#FFB800] shadow-md transition hover:scale-105 ${
                 playing ? "animate-spin [animation-duration:4s]" : ""
               }`}
             >
-              <Disc3 className="h-5 w-5" />
-            </div>
+              <Avatar
+                src={post.user.avatar}
+                name={post.user.name}
+                handle={post.user.handle}
+                size={26}
+              />
+            </button>
           </div>
 
           {playing && (
@@ -753,12 +800,15 @@ export function TumeniApp({
   const [shareFor, setShareFor] = useState<Post | null>(null);
   const [commentsFor, setCommentsFor] = useState<string | null>(null);
   const [studioLaunch, setStudioLaunch] = useState<StudioLaunchMode | null>(null);
+  const [studioInitialSound, setStudioInitialSound] = useState<SoundTrack | null>(null);
+  const [soundSheetPost, setSoundSheetPost] = useState<Post | null>(null);
+  const [viewingCreator, setViewingCreator] = useState<User | null>(null);
   const [profileIdx, setProfileIdx] = useState(0);
   const [switcher, setSwitcher] = useState(false);
   const [notif, setNotif] = useState(true);
   const [reelAt, setReelAt] = useState<string | null>(null);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
-  const [requests, setRequests] = useState<SuggestedPerson[]>(FRIEND_REQUESTS);
+  const [requests, setRequests] = useState<SuggestedPerson[]>([]);
   const [joinedCrews, setJoinedCrews] = useState<string[]>([]);
 
   // Persisted posts & account/cloud directory hydration
@@ -773,7 +823,14 @@ export function TumeniApp({
   const [liveStreamMuted, setLiveStreamMuted] = useState(false);
 
   const reelPosts = posts.filter((p) => p.kind === "video" || p.video || p.mediaIsVideo);
-  const pauseFeedMedia = Boolean(reelAt || liveOpen || studioLaunch !== null || tab !== "home");
+  const pauseFeedMedia = Boolean(
+    reelAt ||
+    liveOpen ||
+    studioLaunch !== null ||
+    soundSheetPost !== null ||
+    viewingCreator !== null ||
+    tab !== "home",
+  );
 
   // Auto-mute Live mini-player whenever another video, reel, story, or voice note claims audio focus
   useEffect(() => {
@@ -1037,12 +1094,7 @@ export function TumeniApp({
   });
 
   const seenPersonIds = new Set<string>();
-  const allPeople: SuggestedPerson[] = [
-    ...cloudDirectory,
-    ...registeredPeople,
-    ...SUGGESTED_PEOPLE,
-    ...FRIEND_REQUESTS,
-  ].filter((p) => {
+  const allPeople: SuggestedPerson[] = [...cloudDirectory, ...registeredPeople].filter((p) => {
     if (seenPersonIds.has(p.user.id)) return false;
     seenPersonIds.add(p.user.id);
     return true;
@@ -1292,12 +1344,16 @@ export function TumeniApp({
                     onShare={() => setShareFor(p)}
                     onSave={() => save(p.id)}
                     onOpen={() => openReels(p.id)}
+                    onOpenCreator={(u) => setViewingCreator(u)}
+                    onOpenSound={(sp) => setSoundSheetPost(sp)}
                   />
                   {idx === 2 && feed.length > 3 && (
                     <CircleRadarCarousel
                       suggestions={visibleSuggestions}
                       tappedIds={tappedIds}
                       userLocation={setup.location}
+                      myHandle={setup.handle}
+                      myName={setup.name}
                       onEditLocation={() => {
                         setProfileIdx(0);
                         setTab("profile");
@@ -1312,11 +1368,13 @@ export function TumeniApp({
                   )}
                 </div>
               ))}
-              {feed.length > 0 && feed.length <= 3 && visibleSuggestions.length > 0 && (
+              {feed.length > 0 && feed.length <= 3 && (
                 <CircleRadarCarousel
                   suggestions={visibleSuggestions}
                   tappedIds={tappedIds}
                   userLocation={setup.location}
+                  myHandle={setup.handle}
+                  myName={setup.name}
                   onEditLocation={() => {
                     setProfileIdx(0);
                     setTab("profile");
@@ -1365,6 +1423,8 @@ export function TumeniApp({
               setProfileIdx(0);
               setTab("profile");
             }}
+            myHandle={setup.handle}
+            myName={setup.name}
           />
         )}
 
@@ -1468,9 +1528,13 @@ export function TumeniApp({
             followersCount={
               isMe
                 ? myFollowersCount
-                : (SUGGESTED_PEOPLE.find((p) => p.user.id === me.id)?.followers ?? 0)
+                : (cloudDirectory.find((p) => p.user.id === me.id)?.followers ??
+                  CREATOR_PROFILES[me.id]?.followers ??
+                  0)
             }
-            followingCount={isMe ? setup.following.length : 0}
+            followingCount={
+              isMe ? setup.following.length : (CREATOR_PROFILES[me.id]?.following ?? 0)
+            }
             editable={isMe}
             onEdit={(v) => {
               const { location, city } = normalizeCity(v.location);
@@ -1558,16 +1622,22 @@ export function TumeniApp({
             </button>
           </div>
           <div className="space-y-3">
-            {SUGGESTED_PEOPLE.slice(0, 4).map(({ user, vibeTag }) => (
-              <RadarSidebarRow
-                key={user.id}
-                u={user}
-                vibeTag={vibeTag}
-                tapped={tappedIds.includes(user.id)}
-                onTapIn={() => handleTapIn(user.id, user.name)}
-                onSendDm={() => openDmForUser(user)}
-              />
-            ))}
+            {visibleSuggestions.length > 0 ? (
+              visibleSuggestions
+                .slice(0, 4)
+                .map(({ user, vibeTag }) => (
+                  <RadarSidebarRow
+                    key={user.id}
+                    u={user}
+                    vibeTag={vibeTag}
+                    tapped={tappedIds.includes(user.id)}
+                    onTapIn={() => handleTapIn(user.id, user.name)}
+                    onSendDm={() => openDmForUser(user)}
+                  />
+                ))
+            ) : (
+              <InviteCrewCard compact myHandle={setup.handle} myName={setup.name} />
+            )}
           </div>
         </div>
         <div className="rounded-3xl border border-[#222228] bg-[#141418] p-5">
@@ -1621,7 +1691,9 @@ export function TumeniApp({
           posts={reelPosts.length > 0 ? reelPosts : posts}
           startId={reelAt}
           initialCategory={feedCategory}
-          suspended={liveOpen || studioLaunch !== null}
+          suspended={
+            liveOpen || studioLaunch !== null || soundSheetPost !== null || viewingCreator !== null
+          }
           followingIds={setup.friends}
           onToggleFollow={handleTapIn}
           liveListenerCount={liveListenerCount}
@@ -1632,6 +1704,8 @@ export function TumeniApp({
           onComment={setCommentsFor}
           onShare={setShareFor}
           onSave={save}
+          onOpenCreator={(u) => setViewingCreator(u)}
+          onOpenSound={(sp) => setSoundSheetPost(sp)}
         />
       )}
 
@@ -1733,11 +1807,62 @@ export function TumeniApp({
         </div>
       </Sheet>
 
+      {soundSheetPost && (
+        <SoundBottomSheet
+          post={soundSheetPost}
+          relatedVideos={reelPosts.filter(
+            (p) =>
+              p.id === soundSheetPost.id ||
+              (soundSheetPost.track && p.track === soundSheetPost.track),
+          )}
+          onClose={() => setSoundSheetPost(null)}
+          onPlayVideo={(id) => {
+            setSoundSheetPost(null);
+            openReels(id);
+          }}
+          onUseSound={(track) => {
+            setSoundSheetPost(null);
+            setReelAt(null);
+            setStudioInitialSound(track);
+            setStudioLaunch("camera");
+            toast.success(`Loaded sound: ${track.title}`);
+          }}
+        />
+      )}
+
+      {viewingCreator && (
+        <CreatorProfileSheet
+          user={viewingCreator}
+          creatorMeta={CREATOR_PROFILES[viewingCreator.id]}
+          cloudPerson={cloudDirectory.find((p) => p.user.id === viewingCreator.id)}
+          isSelf={viewingCreator.id === account}
+          isFollowing={setup.friends.includes(viewingCreator.id)}
+          creatorPosts={posts.filter(
+            (p) => p.user.id === viewingCreator.id || p.authorAccountId === viewingCreator.id,
+          )}
+          onClose={() => setViewingCreator(null)}
+          onToggleFollow={() => handleTapIn(viewingCreator.id, viewingCreator.name)}
+          onMessage={() => {
+            setViewingCreator(null);
+            setReelAt(null);
+            openDmForUser(viewingCreator);
+          }}
+          onPlayVideo={(id) => {
+            setViewingCreator(null);
+            openReels(id);
+          }}
+        />
+      )}
+
       {studioLaunch !== null && (
         <StudioCameraModal
           launchMode={studioLaunch}
+          initialSound={studioInitialSound}
           me={myUser}
-          onClose={() => setStudioLaunch(null)}
+          onClose={() => {
+            setStudioLaunch(null);
+            setStudioInitialSound(null);
+          }}
           onPublish={({
             kind,
             lane,
@@ -1793,6 +1918,7 @@ export function TumeniApp({
             void publishCloudPost(account, post).catch(() => {});
             setTab("home");
             setStudioLaunch(null);
+            setStudioInitialSound(null);
             window.scrollTo({ top: 0 });
             const audienceLabel = POST_AUDIENCES.find((a) => a.id === audience)?.label ?? "Public";
             toast.success(
@@ -2438,6 +2564,320 @@ function EditProfile({
   );
 }
 
+function SoundBottomSheet({
+  post,
+  relatedVideos,
+  onClose,
+  onPlayVideo,
+  onUseSound,
+}: {
+  post: Post;
+  relatedVideos: Post[];
+  onClose: () => void;
+  onPlayVideo: (id: string) => void;
+  onUseSound: (track: SoundTrack) => void;
+}) {
+  const track = toSoundTrackFromPost(post);
+  const [previewing, setPreviewing] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !track.url) return;
+    if (previewing) {
+      void a.play().catch(() => {});
+    } else {
+      a.pause();
+    }
+  }, [previewing, track.url]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0A0A0C]/80 backdrop-blur-sm sm:items-center"
+      onClick={onClose}
+    >
+      {track.url && <audio ref={audioRef} src={track.url} loop preload="none" />}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="animate-rise max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-[#222228] bg-[#141418] p-5 pb-8 sm:rounded-3xl"
+      >
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#222228] sm:hidden" />
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#FFB800]">
+            Sound-to-Post
+          </span>
+          <button
+            type="button"
+            aria-label="Close sound sheet"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-[#222228] hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-3 flex items-center gap-3.5 rounded-2xl border border-[#222228] bg-[#0A0A0C] p-3.5">
+          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-[#FFB800]/40 bg-[#141418]">
+            <img
+              src={track.cover}
+              alt={track.title}
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover"
+            />
+            {track.url && (
+              <button
+                type="button"
+                aria-label={previewing ? "Pause preview" : "Play sound preview"}
+                onClick={() => setPreviewing((p) => !p)}
+                className="absolute inset-0 flex items-center justify-center bg-[#0A0A0C]/45 text-foreground transition hover:bg-[#0A0A0C]/65"
+              >
+                {previewing ? (
+                  <Pause className="h-6 w-6 fill-current text-[#FFB800]" />
+                ) : (
+                  <Play className="ml-0.5 h-6 w-6 fill-current text-[#FFB800]" />
+                )}
+              </button>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-bold text-foreground">{track.title}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {track.artist} · {post.user.handle}
+            </p>
+            <div className="mt-1.5 flex items-center gap-2 text-xs font-semibold tabular-nums text-[#FFB800]">
+              <Disc3 className={`h-3.5 w-3.5 ${previewing ? "animate-spin" : ""}`} />
+              <span>{post.soundDropsCount ?? `${Math.max(1, relatedVideos.length)} drops`}</span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onUseSound(track)}
+          className="mt-4 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#FFB800] px-5 text-sm font-bold text-[#0A0A0C] glow transition hover:brightness-110 active:scale-[0.98]"
+        >
+          <span>🎥 Use This Sound</span>
+        </button>
+
+        {relatedVideos.length > 0 && (
+          <div className="mt-5">
+            <p className="mb-2.5 text-xs font-semibold text-muted-foreground">
+              Videos using this sound
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {relatedVideos.slice(0, 6).map((vid) => (
+                <button
+                  key={vid.id}
+                  type="button"
+                  onClick={() => onPlayVideo(vid.id)}
+                  className="relative aspect-[3/4] overflow-hidden rounded-xl border border-[#222228] bg-[#0A0A0C]"
+                >
+                  <video
+                    src={vid.video ?? vid.media}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-[#0A0A0C]/90 to-transparent p-1.5 text-[10px] font-semibold tabular-nums text-foreground">
+                    <Play className="h-3 w-3 fill-foreground" />
+                    <span>{fmt(vid.views ?? vid.likes)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreatorProfileSheet({
+  user,
+  creatorMeta,
+  cloudPerson,
+  isSelf,
+  isFollowing,
+  creatorPosts,
+  onClose,
+  onToggleFollow,
+  onMessage,
+  onPlayVideo,
+}: {
+  user: User;
+  creatorMeta?: CreatorProfileMeta | undefined;
+  cloudPerson?: SuggestedPerson | undefined;
+  isSelf: boolean;
+  isFollowing: boolean;
+  creatorPosts: Post[];
+  onClose: () => void;
+  onToggleFollow: () => void;
+  onMessage: () => void;
+  onPlayVideo: (id: string) => void;
+}) {
+  const bio = cloudPerson?.bio || creatorMeta?.bio || "Creator dropping fresh visuals on tumeni.";
+  const locationLabel = cloudPerson?.location || cloudPerson?.city || creatorMeta?.location;
+  const baseFollowers = cloudPerson?.followers ?? creatorMeta?.followers ?? 0;
+  const displayFollowers = cloudPerson
+    ? baseFollowers
+    : baseFollowers + (isFollowing && !isSelf ? 1 : 0);
+  const displayFollowing = creatorMeta?.following ?? 0;
+  const totalLikes = creatorPosts.reduce((sum, p) => sum + p.likes, 0);
+  const videoPosts = creatorPosts.filter((p) => p.kind === "video" || p.video || p.mediaIsVideo);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-[#0A0A0C]/85 backdrop-blur-sm sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="animate-rise max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-[#222228] bg-[#141418] pb-8 sm:rounded-3xl"
+      >
+        <div
+          className={`relative h-28 w-full bg-gradient-to-br ${
+            creatorMeta?.coverGradient ?? "from-[#FFB800]/30 via-[#181612] to-[#0A0A0C]"
+          }`}
+        >
+          <button
+            type="button"
+            aria-label="Close creator profile"
+            onClick={onClose}
+            className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0A0C]/75 text-foreground backdrop-blur transition hover:text-[#FFB800]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-5">
+          <div className="-mt-10 flex items-end justify-between gap-3">
+            <div className="rounded-full border-4 border-[#141418] bg-[#141418]">
+              <Avatar src={user.avatar} name={user.name} handle={user.handle} size={80} ring />
+            </div>
+            {!isSelf && (
+              <div className="flex items-center gap-2 pb-1">
+                <button
+                  type="button"
+                  onClick={onToggleFollow}
+                  className={`min-h-[40px] rounded-full px-5 text-xs font-bold transition active:scale-95 ${
+                    isFollowing
+                      ? "border border-[#FFB800]/50 bg-[#0A0A0C] text-[#FFB800]"
+                      : "bg-[#FFB800] text-[#0A0A0C] glow hover:brightness-110"
+                  }`}
+                >
+                  {isFollowing ? "Following ✓" : "Follow"}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Message ${user.name}`}
+                  onClick={onMessage}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#222228] bg-[#0A0A0C] text-foreground transition hover:border-[#FFB800] hover:text-[#FFB800]"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xl font-bold text-foreground">{user.name}</h2>
+              {user.verified && (
+                <BadgeCheck className="h-5 w-5 shrink-0 fill-[#FFB800] text-[#0A0A0C]" />
+              )}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>{user.handle}</span>
+              {locationLabel && (
+                <span className="inline-flex items-center gap-1 font-medium text-[#FFB800]">
+                  <MapPin className="h-3 w-3" />
+                  <span>{locationLabel}</span>
+                </span>
+              )}
+            </div>
+            <p className="mt-2.5 text-sm leading-relaxed text-foreground/90">{bio}</p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 rounded-2xl border border-[#222228] bg-[#0A0A0C] py-3 text-center">
+            <div>
+              <p className="text-base font-bold tabular-nums text-foreground">
+                {fmt(displayFollowers)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">Followers</p>
+            </div>
+            <div className="border-x border-[#222228]">
+              <p className="text-base font-bold tabular-nums text-foreground">
+                {fmt(displayFollowing)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">Following</p>
+            </div>
+            <div>
+              <p className="text-base font-bold tabular-nums text-foreground">{fmt(totalLikes)}</p>
+              <p className="text-[11px] text-muted-foreground">Total Likes</p>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Posted Videos ({videoPosts.length})
+            </p>
+            {videoPosts.length === 0 ? (
+              <div className="rounded-2xl border border-[#222228] bg-[#0A0A0C] py-8 text-center text-xs text-muted-foreground">
+                No video drops posted yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-1">
+                {videoPosts.map((vid) => (
+                  <button
+                    key={vid.id}
+                    type="button"
+                    onClick={() => onPlayVideo(vid.id)}
+                    className="relative aspect-[3/4] overflow-hidden rounded-xl bg-[#0A0A0C]"
+                  >
+                    <video
+                      src={vid.video ?? vid.media}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-[#0A0A0C]/90 to-transparent p-1.5 text-[10px] font-semibold tabular-nums text-foreground">
+                      <Play className="h-3 w-3 fill-foreground" />
+                      <span>{fmt(vid.views ?? vid.likes)}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type BufferedReelItem = {
+  instanceId: string;
+  post: Post;
+};
+
+function buildShuffledCycle(items: Post[], cycle: number): BufferedReelItem[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = copy[i]!;
+    copy[i] = copy[j]!;
+    copy[j] = tmp;
+  }
+  return copy.map((post, idx) => ({
+    instanceId: `${post.id}__loop-${cycle}-${idx}`,
+    post,
+  }));
+}
+
 function Reels({
   posts,
   startId,
@@ -2453,6 +2893,8 @@ function Reels({
   onComment,
   onShare,
   onSave,
+  onOpenCreator,
+  onOpenSound,
 }: {
   posts: Post[];
   startId: string;
@@ -2468,20 +2910,71 @@ function Reels({
   onComment: (id: string) => void;
   onShare: (p: Post) => void;
   onSave: (id: string) => void;
+  onOpenCreator: (user: User) => void;
+  onOpenSound: (post: Post) => void;
 }) {
+  const [feedMode, setFeedMode] = useState<"foryou" | "following">("foryou");
   const [category, setCategory] = useState<"all" | Lane>(initialCategory);
-  const filtered = category === "all" ? posts : posts.filter((p) => p.lane === category);
-  const displayPosts = filtered.length > 0 ? filtered : posts;
+
+  const basePosts = useMemo(() => {
+    const poolByMode =
+      feedMode === "following"
+        ? posts.filter(
+            (p) =>
+              followingIds.includes(p.user.id) ||
+              (p.authorAccountId && followingIds.includes(p.authorAccountId)),
+          )
+        : posts;
+    const filtered =
+      category === "all" ? poolByMode : poolByMode.filter((p) => p.lane === category);
+    return filtered.length > 0 ? filtered : feedMode === "following" ? [] : posts;
+  }, [feedMode, category, posts, followingIds]);
+
+  const [reelBuffer, setReelBuffer] = useState<BufferedReelItem[]>(() =>
+    basePosts.map((post) => ({ instanceId: post.id, post })),
+  );
+  const cycleRef = useRef(1);
+
   const [active, setActive] = useState(() =>
-    displayPosts.some((p) => p.id === startId) ? startId : (displayPosts[0]?.id ?? startId),
+    basePosts.some((p) => p.id === startId) ? startId : (basePosts[0]?.id ?? startId),
   );
   const [muted, setMuted] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const rawIdx = displayPosts.findIndex((p) => p.id === active);
-  const activeIndex = rawIdx >= 0 ? rawIdx : 0;
-  const displayPostIdsKey = displayPosts.map((p) => p.id).join("|");
-  const prevCategoryRef = useRef(category);
+  const prevKeyRef = useRef(`${feedMode}:${category}`);
   const didInitialScrollRef = useRef(false);
+
+  // Sync base buffer when feedMode/category changes
+  useEffect(() => {
+    const key = `${feedMode}:${category}`;
+    if (prevKeyRef.current !== key) {
+      prevKeyRef.current = key;
+      cycleRef.current = 1;
+      const nextBuf = basePosts.map((post) => ({ instanceId: post.id, post }));
+      setReelBuffer(nextBuf);
+      setActive(nextBuf[0]?.instanceId ?? "");
+      box.current?.scrollTo({ top: 0 });
+    }
+  }, [feedMode, category, basePosts]);
+
+  // Keep post references fresh inside buffered cycles (so likes/comments/saves update live)
+  const postLookup = new Map(posts.map((p) => [p.id, p]));
+  const displayItems = reelBuffer.map((item) => ({
+    instanceId: item.instanceId,
+    post: postLookup.get(item.post.id) ?? item.post,
+  }));
+
+  const rawIdx = displayItems.findIndex((item) => item.instanceId === active);
+  const activeIndex = rawIdx >= 0 ? rawIdx : 0;
+  const displayIdsKey = displayItems.map((item) => item.instanceId).join("|");
+
+  // Infinite Video Loop Buffer: append shuffled cycles before user reaches the bottom
+  useEffect(() => {
+    if (basePosts.length === 0) return;
+    if (displayItems.length > 0 && activeIndex >= displayItems.length - 3) {
+      const nextCycle = cycleRef.current++;
+      setReelBuffer((prev) => [...prev, ...buildShuffledCycle(basePosts, nextCycle)]);
+    }
+  }, [activeIndex, displayItems.length, basePosts]);
 
   useEffect(() => {
     if (!suspended) {
@@ -2502,16 +2995,11 @@ function Reels({
   useEffect(() => {
     const root = box.current;
     if (!root) return;
-    if (!didInitialScrollRef.current || prevCategoryRef.current === category) {
-      if (!didInitialScrollRef.current) {
-        didInitialScrollRef.current = true;
-        root.querySelector(`[data-id="${startId}"]`)?.scrollIntoView();
-      }
-    } else {
-      root.scrollTo({ top: 0 });
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      root.querySelector(`[data-id="${startId}"]`)?.scrollIntoView();
     }
-    prevCategoryRef.current = category;
-  }, [startId, category]);
+  }, [startId]);
 
   useEffect(() => {
     const root = box.current;
@@ -2527,32 +3015,54 @@ function Reels({
     return () => {
       io.disconnect();
     };
-  }, [displayPostIdsKey]);
+  }, [displayIdsKey]);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0A0A0C]">
-      <div
-        ref={box}
-        className="no-scrollbar mx-auto h-dvh max-w-xl snap-y snap-mandatory overflow-y-scroll"
-      >
-        {displayPosts.map((p, idx) => (
-          <Reel
-            key={p.id}
-            post={p}
-            active={!suspended && active === p.id}
-            shouldMountMedia={Math.abs(idx - activeIndex) <= 1}
-            isNext={idx === activeIndex + 1}
-            muted={muted}
-            onForceMute={() => setMuted(true)}
-            following={followingIds.includes(p.user.id)}
-            onToggleFollow={() => onToggleFollow(p.user.id, p.user.name)}
-            onLike={() => onLike(p.id)}
-            onComment={() => onComment(p.id)}
-            onShare={() => onShare(p)}
-            onSave={() => onSave(p.id)}
-          />
-        ))}
-      </div>
+      {displayItems.length === 0 ? (
+        <div className="mx-auto flex h-dvh max-w-xl flex-col items-center justify-center px-6 text-center">
+          <Users className="h-12 w-12 text-[#FFB800]" />
+          <h2 className="mt-4 text-lg font-bold text-foreground">
+            No reels from creators you follow yet
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Tap Follow on creators in For You or invite your friends to tumeni.
+          </p>
+          <button
+            type="button"
+            onClick={() => setFeedMode("foryou")}
+            className="mt-5 min-h-[44px] rounded-full bg-[#FFB800] px-6 text-sm font-bold text-[#0A0A0C] glow"
+          >
+            Explore For You
+          </button>
+        </div>
+      ) : (
+        <div
+          ref={box}
+          className="no-scrollbar mx-auto h-dvh max-w-xl snap-y snap-mandatory overflow-y-scroll"
+        >
+          {displayItems.map(({ instanceId, post: p }, idx) => (
+            <Reel
+              key={instanceId}
+              instanceId={instanceId}
+              post={p}
+              active={!suspended && active === instanceId}
+              shouldMountMedia={Math.abs(idx - activeIndex) <= 1}
+              isNext={idx === activeIndex + 1}
+              muted={muted}
+              onForceMute={() => setMuted(true)}
+              following={followingIds.includes(p.user.id)}
+              onToggleFollow={() => onToggleFollow(p.user.id, p.user.name)}
+              onLike={() => onLike(p.id)}
+              onComment={() => onComment(p.id)}
+              onShare={() => onShare(p)}
+              onSave={() => onSave(p.id)}
+              onOpenCreator={() => onOpenCreator(p.user)}
+              onOpenSound={() => onOpenSound(p)}
+            />
+          ))}
+        </div>
+      )}
       <div className="pointer-events-none fixed inset-x-0 top-0 mx-auto max-w-xl space-y-2 p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="pointer-events-auto flex items-center gap-2">
@@ -2576,16 +3086,36 @@ function Reels({
               </span>
               <span className="tabular-nums">LIVE ({liveListenerCount})</span>
             </button>
-            <span className="hidden rounded-full bg-[#0A0A0C]/65 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-muted-foreground backdrop-blur sm:inline-flex">
-              {activeIndex + 1}/{displayPosts.length}
-            </span>
           </div>
 
-          <div className="pointer-events-auto flex items-center gap-2">
+          {/* For You | Following top pills */}
+          <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-[#222228] bg-[#0A0A0C]/75 p-0.5 backdrop-blur">
+            {(
+              [
+                ["foryou", "For You"],
+                ["following", "Following"],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setFeedMode(mode)}
+                className={`min-h-[32px] rounded-full px-3 text-xs font-semibold transition ${
+                  feedMode === mode
+                    ? "bg-[#FFB800] text-[#0A0A0C]"
+                    : "text-foreground/80 hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="pointer-events-auto flex items-center gap-1.5">
             <button
               type="button"
               onClick={onGoLive}
-              className="flex min-h-[38px] items-center gap-1.5 rounded-full bg-[#FFB800] px-3.5 text-xs font-bold text-[#0A0A0C] shadow-[0_0_14px_rgba(255,184,0,0.4)] transition hover:brightness-110 active:scale-95"
+              className="hidden min-h-[38px] items-center gap-1.5 rounded-full bg-[#FFB800] px-3 text-xs font-bold text-[#0A0A0C] shadow-[0_0_14px_rgba(255,184,0,0.4)] transition hover:brightness-110 active:scale-95 sm:flex"
             >
               <Radio className="h-3.5 w-3.5" />
               <span>Go LIVE</span>
@@ -2608,13 +3138,7 @@ function Reels({
               <button
                 key={cat.id}
                 type="button"
-                onClick={() => {
-                  setCategory(cat.id);
-                  const nextList =
-                    cat.id === "all" ? posts : posts.filter((p) => p.lane === cat.id);
-                  const first = (nextList.length > 0 ? nextList : posts)[0];
-                  if (first) setActive(first.id);
-                }}
+                onClick={() => setCategory(cat.id)}
                 className={`min-h-[30px] shrink-0 whitespace-nowrap rounded-full px-3 text-[11px] font-semibold backdrop-blur transition ${
                   selected
                     ? "bg-[#FFB800] text-[#0A0A0C]"
@@ -2632,6 +3156,7 @@ function Reels({
 }
 
 function Reel({
+  instanceId,
   post,
   active,
   shouldMountMedia,
@@ -2644,7 +3169,10 @@ function Reel({
   onComment,
   onShare,
   onSave,
+  onOpenCreator,
+  onOpenSound,
 }: {
+  instanceId: string;
   post: Post;
   active: boolean;
   shouldMountMedia: boolean;
@@ -2657,6 +3185,8 @@ function Reel({
   onComment: () => void;
   onShare: () => void;
   onSave: () => void;
+  onOpenCreator: () => void;
+  onOpenSound: () => void;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const soundAudioRef = useRef<HTMLAudioElement>(null);
@@ -2722,6 +3252,9 @@ function Reel({
       if (!post.liked) onLike();
       setBurst((b) => b + 1);
       setPaused(false);
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(35);
+      }
     } else {
       setTimeout(() => {
         if (Date.now() - lastTap.current >= 280) setPaused((x) => !x);
@@ -2732,7 +3265,7 @@ function Reel({
 
   return (
     <section
-      data-id={post.id}
+      data-id={instanceId}
       className="relative h-dvh w-full snap-start snap-always overflow-hidden bg-[#0A0A0C]"
     >
       {shouldMountMedia && post.soundUrl && (
@@ -2818,22 +3351,33 @@ function Reel({
       )}
       <div className="absolute bottom-24 left-4 right-20 space-y-2 lg:bottom-10">
         <div className="flex items-center gap-2">
-          <Avatar
-            src={post.user.avatar}
-            name={post.user.name}
-            handle={post.user.handle}
-            size={36}
-            ring
-          />
-          <span className="font-semibold">{post.user.handle}</span>
-          {post.user.verified && <BadgeCheck className="h-4 w-4 fill-[#FFB800] text-[#0A0A0C]" />}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenCreator();
+            }}
+            className="flex min-w-0 items-center gap-2 text-left transition hover:text-[#FFB800]"
+          >
+            <Avatar
+              src={post.user.avatar}
+              name={post.user.name}
+              handle={post.user.handle}
+              size={36}
+              ring
+            />
+            <span className="truncate font-semibold">{post.user.handle}</span>
+            {post.user.verified && (
+              <BadgeCheck className="h-4 w-4 shrink-0 fill-[#FFB800] text-[#0A0A0C]" />
+            )}
+          </button>
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               onToggleFollow();
             }}
-            className={`ml-1 rounded-full px-3 py-1 text-xs font-semibold transition active:scale-95 ${
+            className={`ml-1 shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition active:scale-95 ${
               following
                 ? "border border-[#222228] bg-[#141418]/80 text-foreground/90 backdrop-blur"
                 : "bg-[#FFB800] text-[#0A0A0C] hover:brightness-110"
@@ -2845,7 +3389,15 @@ function Reel({
         <p className="text-sm">
           {post.caption} {post.tag && <span className="text-[#FFB800]">{post.tag}</span>}
         </p>
-        <div className="flex max-w-xs items-center gap-2 rounded-full bg-[#0A0A0C]/55 px-3 py-1 text-xs text-foreground/90 backdrop-blur">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenSound();
+          }}
+          aria-label={`Open sound ${post.track ?? post.user.handle}`}
+          className="flex max-w-xs items-center gap-2 rounded-full bg-[#0A0A0C]/65 px-3 py-1.5 text-left text-xs text-foreground/95 backdrop-blur transition hover:bg-[#141418]"
+        >
           <Music className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
           <div className="min-w-0 flex-1 overflow-hidden">
             <div
@@ -2861,7 +3413,7 @@ function Reel({
               )}
             </div>
           </div>
-        </div>
+        </button>
       </div>
       <div className="absolute bottom-24 right-3 flex flex-col items-center gap-5 lg:bottom-10">
         <button
@@ -2880,7 +3432,7 @@ function Reel({
           className="flex flex-col items-center gap-1 text-xs font-medium tabular-nums active:scale-90"
         >
           <MessageCircle className="h-8 w-8" />
-          {fmt(post.comments.length)}
+          {fmt((post.commentCount ?? 0) + post.comments.length)}
         </button>
         <button
           type="button"
@@ -2899,8 +3451,14 @@ function Reel({
         >
           <Bookmark className={`h-7 w-7 ${post.saved ? "fill-[#FFB800] text-[#FFB800]" : ""}`} />
         </button>
-        <div
-          className={`h-10 w-10 overflow-hidden rounded-full border-4 border-[#141418] ${
+        <button
+          type="button"
+          aria-label="Use sound from vinyl"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenSound();
+          }}
+          className={`flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-4 border-[#141418] bg-[#0A0A0C] ring-2 ring-[#FFB800]/40 transition hover:scale-105 ${
             active && !paused ? "animate-spin [animation-duration:4s]" : ""
           }`}
         >
@@ -2910,7 +3468,7 @@ function Reel({
             handle={post.user.handle}
             size={32}
           />
-        </div>
+        </button>
       </div>
       <div className="absolute inset-x-0 bottom-0 h-1 bg-foreground/20">
         <div ref={progressBarRef} className="h-full bg-[#FFB800]" style={{ width: "0%" }} />

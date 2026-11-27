@@ -1,8 +1,12 @@
 import "./lib/error-capture";
 
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { GoogleGenAI, Type } from "@google/genai";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import type { SetupProfile } from "./components/tumeni/onboarding";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -494,6 +498,416 @@ async function handleAiCaptions(request: Request): Promise<Response> {
   }
 }
 
+type StoredAuthUser = {
+  uid: string;
+  email: string;
+  emailNormalized: string;
+  passwordHash: string;
+  profile: SetupProfile | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const SESSION_COOKIE_NAME = "tumeni_session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const AUTH_DATA_DIR = path.resolve(process.cwd(), ".tumeni-data");
+const AUTH_USERS_FILE = path.resolve(AUTH_DATA_DIR, "users.json");
+if (!AUTH_USERS_FILE.startsWith(AUTH_DATA_DIR + path.sep)) {
+  throw new Error("Invalid auth store path");
+}
+
+const globalForAuth = globalThis as typeof globalThis & {
+  __tumeniSessionSecret?: string;
+  __tumeniWriteQueue?: Promise<void>;
+};
+
+function getSessionSecret(): string {
+  const fromEnv = process.env["SESSION_SECRET"]?.trim();
+  if (fromEnv) return fromEnv;
+  if (!globalForAuth.__tumeniSessionSecret) {
+    globalForAuth.__tumeniSessionSecret = crypto.randomBytes(32).toString("hex");
+  }
+  return globalForAuth.__tumeniSessionSecret;
+}
+
+function jsonResponse(payload: unknown, status = 200, extraHeaders?: Record<string, string>) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      ...extraHeaders,
+    },
+  });
+}
+
+function isSameOriginMutation(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  let originHost = "";
+  try {
+    originHost = new URL(origin).host.toLowerCase();
+  } catch {
+    return false;
+  }
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  const host = request.headers.get("host")?.trim().toLowerCase();
+  return originHost === forwardedHost || originHost === host;
+}
+
+function isHttpsRequest(request: Request, url: URL): boolean {
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  return forwardedProto === "https" || url.protocol === "https:";
+}
+
+function buildSessionCookie(
+  token: string,
+  request: Request,
+  url: URL,
+  maxAge = SESSION_MAX_AGE_SECONDS,
+): string {
+  const parts = [`${SESSION_COOKIE_NAME}=${token}`, "Path=/", "HttpOnly", `Max-Age=${maxAge}`];
+  if (isHttpsRequest(request, url)) {
+    parts.push("SameSite=None", "Secure", "Partitioned");
+  } else {
+    parts.push("SameSite=Lax");
+  }
+  return parts.join("; ");
+}
+
+function parseCookieValue(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    if (part.slice(0, idx).trim() === name) {
+      return part.slice(idx + 1).trim();
+    }
+  }
+  return null;
+}
+
+function signSessionToken(uid: string): string {
+  const exp = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
+  const payloadB64 = Buffer.from(JSON.stringify({ uid, exp }), "utf8").toString("base64url");
+  const sigB64 = crypto
+    .createHmac("sha256", getSessionSecret())
+    .update(payloadB64)
+    .digest("base64url");
+  return `${payloadB64}.${sigB64}`;
+}
+
+function verifySessionToken(token: string | null): string | null {
+  if (!token) return null;
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
+  const payloadB64 = token.slice(0, dot);
+  const sigB64 = token.slice(dot + 1);
+  if (!payloadB64 || !sigB64) return null;
+
+  const expectedSig = crypto
+    .createHmac("sha256", getSessionSecret())
+    .update(payloadB64)
+    .digest("base64url");
+
+  const sigBuf = Buffer.from(sigB64, "utf8");
+  const expectedBuf = Buffer.from(expectedSig, "utf8");
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as {
+      uid?: unknown;
+      exp?: unknown;
+    };
+    if (typeof parsed.uid !== "string" || typeof parsed.exp !== "number") return null;
+    if (parsed.exp < Date.now()) return null;
+    return parsed.uid;
+  } catch {
+    return null;
+  }
+}
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derived = await new Promise<Buffer>((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, key) => {
+      if (err) reject(err);
+      else resolve(key);
+    });
+  });
+  return `scrypt:${salt}:${derived.toString("hex")}`;
+}
+
+async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  const parts = storedHash.split(":");
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
+  const salt = parts[1];
+  const hexKey = parts[2];
+  if (!salt || !hexKey) return false;
+  try {
+    const expected = Buffer.from(hexKey, "hex");
+    const derived = await new Promise<Buffer>((resolve, reject) => {
+      crypto.scrypt(password, salt, expected.length, (err, key) => {
+        if (err) reject(err);
+        else resolve(key);
+      });
+    });
+    return derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+  } catch {
+    return false;
+  }
+}
+
+async function readAuthUsers(): Promise<StoredAuthUser[]> {
+  try {
+    const raw = await fs.readFile(AUTH_USERS_FILE, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as StoredAuthUser[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function enqueueAuthWrite(task: () => Promise<void>): Promise<void> {
+  const prev = globalForAuth.__tumeniWriteQueue ?? Promise.resolve();
+  const next = prev.then(task, task);
+  globalForAuth.__tumeniWriteQueue = next.catch(() => {});
+  return next;
+}
+
+async function writeAuthUsers(users: StoredAuthUser[]): Promise<void> {
+  await fs.mkdir(AUTH_DATA_DIR, { recursive: true });
+  const tempFile = path.resolve(AUTH_DATA_DIR, `users.${crypto.randomUUID()}.tmp`);
+  if (!tempFile.startsWith(AUTH_DATA_DIR + path.sep)) {
+    throw new Error("Invalid temporary path");
+  }
+  await fs.writeFile(tempFile, JSON.stringify(users, null, 2), { encoding: "utf8", mode: 0o600 });
+  await fs.rename(tempFile, AUTH_USERS_FILE);
+}
+
+function sanitizeSetupProfile(raw: unknown): SetupProfile | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const name = typeof obj["name"] === "string" ? obj["name"].trim().slice(0, 50) : "";
+  const rawHandle = typeof obj["handle"] === "string" ? obj["handle"].trim().replace(/^@/, "") : "";
+  const cleanHandle = rawHandle.replace(/[^a-zA-Z0-9_.]/g, "").slice(0, 24);
+  if (!name || cleanHandle.length < 2) return null;
+
+  const rawAvatar = typeof obj["avatar"] === "string" ? obj["avatar"].trim() : "";
+  const avatar =
+    rawAvatar.length <= 95000 &&
+    (rawAvatar.startsWith("data:image/") || rawAvatar.startsWith("https://"))
+      ? rawAvatar
+      : "";
+  const bio = typeof obj["bio"] === "string" ? obj["bio"].trim().slice(0, 160) : "";
+  const location =
+    typeof obj["location"] === "string"
+      ? obj["location"].trim().replace(/\s+/g, " ").slice(0, 80)
+      : "";
+  const city =
+    typeof obj["city"] === "string"
+      ? obj["city"].trim().replace(/\s+/g, " ").slice(0, 60)
+      : (location.split(",")[0] ?? location).trim().slice(0, 60);
+
+  const strArray = (val: unknown, maxLen: number) =>
+    Array.isArray(val)
+      ? val
+          .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .map((item) => item.trim().slice(0, 64))
+          .slice(0, maxLen)
+      : [];
+
+  return {
+    name,
+    handle: `@${cleanHandle}`,
+    avatar,
+    bio,
+    location,
+    city,
+    interests: strArray(obj["interests"], 12),
+    following: strArray(obj["following"], 500),
+    friends: strArray(obj["friends"], 500),
+  };
+}
+
+function isValidEmail(raw: string): boolean {
+  return raw.length > 3 && raw.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
+}
+
+async function handleAuthRoutes(request: Request, url: URL): Promise<Response> {
+  if (url.pathname === "/api/auth/session" && request.method === "GET") {
+    const uid = verifySessionToken(
+      parseCookieValue(request.headers.get("cookie"), SESSION_COOKIE_NAME),
+    );
+    if (!uid) return jsonResponse({ user: null, profile: null });
+    const users = await readAuthUsers();
+    const user = users.find((u) => u.uid === uid);
+    if (!user) return jsonResponse({ user: null, profile: null });
+    return jsonResponse({ user: { uid: user.uid, email: user.email }, profile: user.profile });
+  }
+
+  if (url.pathname === "/api/auth/directory" && request.method === "GET") {
+    const users = await readAuthUsers();
+    const profiles = users
+      .filter((u) => u.profile !== null)
+      .map((u) => {
+        const p = u.profile!;
+        const firstInterest =
+          p.interests[0]?.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || "Creator";
+        return {
+          uid: u.uid,
+          name: p.name,
+          handle: p.handle,
+          avatar: p.avatar,
+          bio: p.bio || "Creator on tumeni.",
+          vibeTag: `#${firstInterest}`,
+          location: p.location || p.city || "",
+          city: p.city || "",
+          followers: 0,
+        };
+      });
+    return jsonResponse({ profiles });
+  }
+
+  if (!isSameOriginMutation(request)) {
+    return jsonResponse({ error: "Cross-origin auth request rejected." }, 403);
+  }
+
+  if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+    return jsonResponse({ ok: true }, 200, {
+      "set-cookie": buildSessionCookie("", request, url, 0),
+    });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return jsonResponse({ error: "Invalid JSON body." }, 400);
+  }
+
+  if (url.pathname === "/api/auth/signup" && request.method === "POST") {
+    const email = typeof body["email"] === "string" ? body["email"].trim() : "";
+    const password = typeof body["password"] === "string" ? body["password"] : "";
+    if (!isValidEmail(email)) {
+      return jsonResponse({ error: "Enter a valid email address." }, 400);
+    }
+    if (password.length < 6 || password.length > 128) {
+      return jsonResponse({ error: "Password must be 6–128 characters." }, 400);
+    }
+
+    const emailNormalized = email.toLowerCase();
+    const passwordHash = await hashPassword(password);
+    let created: StoredAuthUser | null = null;
+    let duplicate = false;
+
+    await enqueueAuthWrite(async () => {
+      const users = await readAuthUsers();
+      if (users.some((u) => u.emailNormalized === emailNormalized)) {
+        duplicate = true;
+        return;
+      }
+      const now = Date.now();
+      created = {
+        uid: `srv_${crypto.randomUUID()}`,
+        email,
+        emailNormalized,
+        passwordHash,
+        profile: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await writeAuthUsers([created, ...users]);
+    });
+
+    if (duplicate || !created) {
+      return jsonResponse(
+        { error: "An account with this email already exists. Switch to Sign In to continue." },
+        409,
+      );
+    }
+
+    const signedUser = created as StoredAuthUser;
+    const token = signSessionToken(signedUser.uid);
+    return jsonResponse(
+      { user: { uid: signedUser.uid, email: signedUser.email }, profile: null },
+      201,
+      { "set-cookie": buildSessionCookie(token, request, url) },
+    );
+  }
+
+  if (url.pathname === "/api/auth/signin" && request.method === "POST") {
+    const email = typeof body["email"] === "string" ? body["email"].trim() : "";
+    const password = typeof body["password"] === "string" ? body["password"] : "";
+    if (!isValidEmail(email) || !password) {
+      return jsonResponse({ error: "Enter your email and password." }, 400);
+    }
+
+    const emailNormalized = email.toLowerCase();
+    const users = await readAuthUsers();
+    const existing = users.find((u) => u.emailNormalized === emailNormalized);
+    if (!existing || !(await verifyPassword(password, existing.passwordHash))) {
+      return jsonResponse(
+        { error: "Incorrect email or password. Double-check your details and try again." },
+        401,
+      );
+    }
+
+    const token = signSessionToken(existing.uid);
+    return jsonResponse(
+      { user: { uid: existing.uid, email: existing.email }, profile: existing.profile },
+      200,
+      { "set-cookie": buildSessionCookie(token, request, url) },
+    );
+  }
+
+  if (url.pathname === "/api/auth/profile" && request.method === "PUT") {
+    const uid = verifySessionToken(
+      parseCookieValue(request.headers.get("cookie"), SESSION_COOKIE_NAME),
+    );
+    if (!uid) {
+      return jsonResponse({ error: "Please sign in again to save your profile." }, 401);
+    }
+
+    const profile = sanitizeSetupProfile(body["profile"]);
+    if (!profile) {
+      return jsonResponse({ error: "Enter a valid display name and @handle." }, 400);
+    }
+
+    let found = false;
+    await enqueueAuthWrite(async () => {
+      const users = await readAuthUsers();
+      const idx = users.findIndex((u) => u.uid === uid);
+      if (idx < 0) return;
+      found = true;
+      const next = [...users];
+      next[idx] = {
+        ...users[idx]!,
+        profile,
+        updatedAt: Date.now(),
+      };
+      await writeAuthUsers(next);
+    });
+
+    if (!found) {
+      return jsonResponse({ error: "Account not found." }, 404);
+    }
+    return jsonResponse({ ok: true, profile });
+  }
+
+  return jsonResponse({ error: "Not found" }, 404);
+}
+
 // Hosting compresses every response at the edge. Never compress a body (gzip, brotli,
 // CompressionStream) or set content-encoding here or in a server route: the body gets encoded
 // twice and renders garbled.
@@ -501,6 +915,9 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const url = new URL(request.url);
+      if (url.pathname.startsWith("/api/auth/")) {
+        return await handleAuthRoutes(request, url);
+      }
       if (url.pathname === "/api/music/search") {
         return await handleMusicSearch(url);
       }

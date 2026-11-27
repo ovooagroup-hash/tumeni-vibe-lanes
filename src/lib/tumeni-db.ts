@@ -159,41 +159,86 @@ export async function saveCloudProfile(
 }
 
 export async function listDirectoryProfiles(userCity?: string): Promise<SuggestedPerson[]> {
-  if (!auth.currentUser) return [];
   const path = "profiles";
-  try {
-    const q = query(collection(db, path), where("isPublicProfile", "==", true), limit(60));
-    const snap = await getDocs(q);
-    const { cityLower: myCityLower } = normalizeCity(userCity ?? "");
+  const { cityLower: myCityLower } = normalizeCity(userCity ?? "");
+  const items: SuggestedPerson[] = [];
+  const seenIds = new Set<string>();
 
-    const items: SuggestedPerson[] = snap.docs.map((d) => {
-      const data = d.data() as CloudProfileDoc;
-      return {
-        user: {
-          id: data.uid,
-          name: data.name,
-          handle: data.handle,
-          avatar: data.avatar,
-        },
-        bio: data.bio || "Creator on tumeni.",
-        vibeTag: data.vibeTag || "#Creator",
-        location: data.location || data.city || undefined,
-        city: data.city || undefined,
-        mutuals: 0,
-        followers: data.followersCount ?? 0,
-        nearYou: Boolean(myCityLower && data.cityLower && data.cityLower === myCityLower),
-        sharedWith: [],
-      };
-    });
-
-    items.sort((a, b) => Number(Boolean(b.nearYou)) - Number(Boolean(a.nearYou)));
-    return items;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("Missing or insufficient permissions")) {
-      handleFirestoreError(error, OperationType.LIST, path);
+  if (auth.currentUser) {
+    try {
+      const q = query(collection(db, path), where("isPublicProfile", "==", true), limit(60));
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        const data = d.data() as CloudProfileDoc;
+        seenIds.add(data.uid);
+        items.push({
+          user: {
+            id: data.uid,
+            name: data.name,
+            handle: data.handle,
+            avatar: data.avatar,
+          },
+          bio: data.bio || "Creator on tumeni.",
+          vibeTag: data.vibeTag || "#Creator",
+          location: data.location || data.city || undefined,
+          city: data.city || undefined,
+          mutuals: 0,
+          followers: data.followersCount ?? 0,
+          nearYou: Boolean(myCityLower && data.cityLower && data.cityLower === myCityLower),
+          sharedWith: [],
+        });
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Missing or insufficient permissions")) {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
-    return [];
   }
+
+  try {
+    const res = await fetch("/api/auth/directory", { credentials: "same-origin" });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        profiles?: Array<{
+          uid?: string;
+          name?: string;
+          handle?: string;
+          avatar?: string;
+          bio?: string;
+          vibeTag?: string;
+          location?: string;
+          city?: string;
+          followers?: number;
+        }>;
+      };
+      for (const p of data.profiles ?? []) {
+        if (!p.uid || seenIds.has(p.uid) || !p.name || !p.handle) continue;
+        seenIds.add(p.uid);
+        const cityInfo = normalizeCity(p.location || p.city || "");
+        items.push({
+          user: {
+            id: p.uid,
+            name: p.name,
+            handle: p.handle,
+            avatar: p.avatar ?? "",
+          },
+          bio: p.bio || "Creator on tumeni.",
+          vibeTag: p.vibeTag || "#Creator",
+          location: p.location || p.city || undefined,
+          city: p.city || undefined,
+          mutuals: 0,
+          followers: p.followers ?? 0,
+          nearYou: Boolean(myCityLower && cityInfo.cityLower && cityInfo.cityLower === myCityLower),
+          sharedWith: [],
+        });
+      }
+    }
+  } catch {
+    /* Optional server directory lookup. */
+  }
+
+  items.sort((a, b) => Number(Boolean(b.nearYou)) - Number(Boolean(a.nearYou)));
+  return items;
 }
 
 export async function toggleCloudFollow(

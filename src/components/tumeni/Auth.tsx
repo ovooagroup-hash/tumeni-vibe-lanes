@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   Camera,
   Check,
+  ExternalLink,
   Eye,
   EyeOff,
   Flame,
@@ -14,19 +15,27 @@ import {
   MapPin,
   Music,
   Trophy,
+  Volume2,
 } from "lucide-react";
 import {
+  browserPopupRedirectResolver,
   createUserWithEmailAndPassword,
+  getRedirectResult,
+  GoogleAuthProvider,
   sendEmailVerification,
   sendPasswordResetEmail,
+  signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { auth, googleProvider } from "@/lib/firebase";
 import { fetchCloudProfile, saveCloudProfile } from "@/lib/tumeni-db";
+import firebaseConfig from "../../../firebase-applet-config.json";
 import { LogoMark, Wordmark } from "./Logo";
+import { avatar } from "./data";
 import {
   INTERESTS,
   POPULAR_CITIES,
@@ -38,8 +47,27 @@ import {
   type SetupProfile,
 } from "./onboarding";
 
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential?: string }) => void;
+            use_fedcm_for_prompt?: boolean;
+            use_fedcm_for_button?: boolean;
+            ux_mode?: "popup" | "redirect";
+          }) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
+
 const G = () => (
-  <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden="true">
+  <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0" aria-hidden="true">
     <path
       fill="#4285F4"
       d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
@@ -59,7 +87,7 @@ const G = () => (
   </svg>
 );
 
-const steps = ["Welcome", "Your profile", "Your interests", "Your circle"];
+const steps = ["Welcome", "Profile", "Vibes", "Circle"];
 const icons = [Laugh, Flame, Music, Camera, Gamepad2, Trophy];
 const empty: SetupProfile = {
   name: "",
@@ -73,6 +101,67 @@ const empty: SetupProfile = {
   friends: [],
 };
 
+const SHOWCASE_LANES = [
+  {
+    id: "amapiano",
+    label: "Amapiano",
+    creator: "The Groove Plug",
+    handle: "@amapiano_plug",
+    avatar: avatar(14),
+    city: "Johannesburg",
+    caption: "Crowd went crazy when the log drum dropped at Konka yesterday",
+    sound: "Mnike (Slowed + Reverb) — Tyler ICU",
+    likes: "94.6K",
+    drops: "38.2K drops",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    accentGradient: "from-[#FFB800]/25 via-[#221708] to-[#0A0A0C]",
+  },
+  {
+    id: "laughs",
+    label: "Funny",
+    creator: "Haha Hub",
+    handle: "@hahahub",
+    avatar: avatar(33),
+    city: "London",
+    caption: "Testing the boop the nose challenge on my dog… he was NOT amused",
+    sound: "Original Sound — @hahahub",
+    likes: "14.5K",
+    drops: "136K views",
+    video: "https://cdn.coverr.co/videos/coverr-girl-touches-a-dog-s-nose-3909/720p.mp4",
+    accentGradient: "from-orange-500/20 via-[#1D150E] to-[#0A0A0C]",
+  },
+  {
+    id: "vlog",
+    label: "Vlogs",
+    creator: "Durban Visuals",
+    handle: "@street_heat_sa",
+    avatar: avatar(31),
+    city: "Durban",
+    caption: "Golden hour fit check. Obsidian and amber only.",
+    sound: "Water (Club Mix) — Tyla",
+    likes: "32.1K",
+    drops: "22.4K drops",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    accentGradient: "from-amber-400/20 via-[#1A1610] to-[#0A0A0C]",
+  },
+  {
+    id: "music",
+    label: "Music",
+    creator: "Nia Rose",
+    handle: "@vocal_luxe",
+    avatar: avatar(44),
+    city: "London",
+    caption: "Late night raw vocals in the booth. No autotune needed.",
+    sound: "Soul Session 04 — Nia Rose",
+    likes: "61.4K",
+    drops: "19.1K drops",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    accentGradient: "from-rose-500/20 via-[#1E1318] to-[#0A0A0C]",
+  },
+] as const;
+
 function sanitizeHandle(raw: string): string {
   const cleaned = raw
     .toLowerCase()
@@ -81,14 +170,15 @@ function sanitizeHandle(raw: string): string {
   return cleaned.length >= 2 ? cleaned : `tumeni.${Math.floor(100 + Math.random() * 900)}`;
 }
 
+function getAuthErrorCode(err: unknown): string {
+  return typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code?: string }).code ?? "")
+    : "";
+}
+
 function formatAuthError(err: unknown): string {
-  const code =
-    typeof err === "object" && err !== null && "code" in err
-      ? String((err as { code?: string }).code ?? "")
-      : "";
+  const code = getAuthErrorCode(err);
   switch (code) {
-    case "auth/operation-not-allowed":
-      return "Email/Password sign-in is not enabled yet in Firebase Console (Authentication → Sign-in method). Enable it there or use Google Sign-In above.";
     case "auth/invalid-credential":
     case "auth/wrong-password":
     case "auth/user-not-found":
@@ -101,9 +191,9 @@ function formatAuthError(err: unknown): string {
       return "Enter a valid email address.";
     case "auth/popup-closed-by-user":
     case "auth/cancelled-popup-request":
-      return "Google sign-in popup was closed before completing.";
+      return "Mobile preview closed the Google popup before finishing. Use Open in Full Tab below or sign in with Email & Password.";
     case "auth/popup-blocked":
-      return "Your browser blocked the Google sign-in popup. Allow popups for this site and try again.";
+      return "Your browser blocked the Google popup. Use Open in Full Tab below or sign in with Email & Password.";
     case "auth/too-many-requests":
       return "Too many attempts right now. Wait a minute and try again.";
     default:
@@ -131,6 +221,11 @@ export function Auth({
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(startNeedsVerify);
+  const [googleFallbackHelp, setGoogleFallbackHelp] = useState(false);
+  const [activePreviewId, setActivePreviewId] = useState<(typeof SHOWCASE_LANES)[number]["id"]>(
+    SHOWCASE_LANES[0].id,
+  );
+  const [previewAvatarBroken, setPreviewAvatarBroken] = useState(false);
   const [infoMsg, setInfoMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [profile, setProfile] = useState<SetupProfile>(() => {
@@ -148,10 +243,74 @@ export function Auth({
   const [error, setError] = useState("");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
+  const gisLoadedRef = useRef(false);
+
+  const activePreview =
+    SHOWCASE_LANES.find((lane) => lane.id === activePreviewId) ?? SHOWCASE_LANES[0];
+
+  const hydrateOrStartOnboarding = useCallback(
+    async (
+      uid: string,
+      userEmail: string,
+      displayName?: string | null,
+      serverProfile?: SetupProfile | null,
+    ) => {
+      if (serverProfile) {
+        onLogin(uid, serverProfile);
+        return;
+      }
+
+      if (!uid.startsWith("srv_")) {
+        try {
+          const cloud = await fetchCloudProfile(uid);
+          if (cloud?.profile) {
+            onLogin(uid, cloud.profile);
+            return;
+          }
+        } catch {
+          /* Check local backup or proceed to onboarding. */
+        }
+      }
+
+      try {
+        const localBackup = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
+        if (localBackup) {
+          if (uid.startsWith("srv_")) {
+            await fetch("/api/auth/profile", {
+              method: "PUT",
+              headers: { "content-type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ profile: localBackup }),
+            });
+          } else {
+            await saveCloudProfile(uid, userEmail, localBackup);
+          }
+          onLogin(uid, localBackup);
+          return;
+        }
+      } catch {
+        /* Continue to fresh profile setup. */
+      }
+
+      const fallbackName = displayName?.trim() || userEmail.split("@")[0] || "";
+      setAccount(uid);
+      setPassword("");
+      setNeedsVerification(false);
+      setGoogleFallbackHelp(false);
+      setProfile((prev) => ({
+        ...prev,
+        name: prev.name || fallbackName.slice(0, 50),
+        handle: prev.handle || sanitizeHandle(userEmail.split("@")[0] || fallbackName),
+      }));
+      setStep(1);
+      window.scrollTo(0, 0);
+    },
+    [onLogin],
+  );
 
   useEffect(() => {
     const fbUser = auth.currentUser;
-    if (initialAccount && fbUser) {
+    if (initialAccount && fbUser && initialAccount === fbUser.uid) {
       setAccount(fbUser.uid);
       if (fbUser.emailVerified && step === 0 && !needsVerification) {
         setProfile((prev) => ({
@@ -166,8 +325,98 @@ export function Auth({
         setNeedsVerification(true);
         setStep(0);
       }
+    } else if (initialAccount && initialAccount.startsWith("srv_") && step === 0) {
+      setAccount(initialAccount);
+      setNeedsVerification(false);
+      setStep(1);
     }
   }, [initialAccount, step, needsVerification]);
+
+  useEffect(() => {
+    let active = true;
+    void getRedirectResult(auth)
+      .then(async (res) => {
+        if (!active || !res?.user) return;
+        setBusy(true);
+        await hydrateOrStartOnboarding(res.user.uid, res.user.email ?? "", res.user.displayName);
+      })
+      .catch((err) => {
+        if (!active) return;
+        const code = getAuthErrorCode(err);
+        if (code && code !== "auth/no-auth-event") {
+          setError(formatAuthError(err));
+        }
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [hydrateOrStartOnboarding]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || gisLoadedRef.current || !firebaseConfig.oAuthClientId) {
+      return;
+    }
+    gisLoadedRef.current = true;
+
+    const initGis = () => {
+      const gisId = window.google?.accounts?.id;
+      if (!gisId) return;
+      try {
+        gisId.initialize({
+          client_id: firebaseConfig.oAuthClientId,
+          use_fedcm_for_prompt: true,
+          use_fedcm_for_button: true,
+          callback: (response) => {
+            const token = response.credential;
+            if (!token) return;
+            setBusy(true);
+            setError("");
+            setGoogleFallbackHelp(false);
+            const credential = GoogleAuthProvider.credential(token);
+            void signInWithCredential(auth, credential)
+              .then((cred) =>
+                hydrateOrStartOnboarding(
+                  cred.user.uid,
+                  cred.user.email ?? "",
+                  cred.user.displayName,
+                ),
+              )
+              .catch((err) => {
+                setError(formatAuthError(err));
+              })
+              .finally(() => {
+                setBusy(false);
+              });
+          },
+        });
+      } catch {
+        /* GIS fallback stays optional. */
+      }
+    };
+
+    if (window.google?.accounts?.id) {
+      initGis();
+      return;
+    }
+
+    const existingScript = document.querySelector(
+      'script[src="https://accounts.google.com/gsi/client"]',
+    );
+    if (existingScript) {
+      existingScript.addEventListener("load", initGis);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initGis;
+    document.head.appendChild(script);
+  }, [hydrateOrStartOnboarding]);
 
   const next = () => {
     setError("");
@@ -176,57 +425,81 @@ export function Auth({
     window.scrollTo(0, 0);
   };
 
-  const hydrateOrStartOnboarding = async (
-    uid: string,
-    userEmail: string,
-    displayName?: string | null,
-  ) => {
-    try {
-      const cloud = await fetchCloudProfile(uid);
-      if (cloud?.profile) {
-        onLogin(uid, cloud.profile);
-        return;
-      }
-    } catch {
-      /* Check local backup or proceed to onboarding. */
-    }
-
-    try {
-      const localBackup = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
-      if (localBackup) {
-        await saveCloudProfile(uid, userEmail, localBackup);
-        onLogin(uid, localBackup);
-        return;
-      }
-    } catch {
-      /* Continue to fresh profile setup. */
-    }
-
-    const fallbackName = displayName?.trim() || userEmail.split("@")[0] || "";
-    setAccount(uid);
-    setPassword("");
-    setNeedsVerification(false);
-    setProfile((prev) => ({
-      ...prev,
-      name: prev.name || fallbackName.slice(0, 50),
-      handle: prev.handle || sanitizeHandle(userEmail.split("@")[0] || fallbackName),
-    }));
-    setStep(1);
-    window.scrollTo(0, 0);
-  };
-
   const handleGoogleSignIn = async () => {
     setError("");
     setInfoMsg("");
+    setGoogleFallbackHelp(false);
     setBusy(true);
     try {
-      const cred = await signInWithPopup(auth, googleProvider);
+      const cred = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
       await hydrateOrStartOnboarding(cred.user.uid, cred.user.email ?? "", cred.user.displayName);
     } catch (err) {
+      const code = getAuthErrorCode(err);
+      const isPopupFailure =
+        code === "auth/popup-closed-by-user" ||
+        code === "auth/cancelled-popup-request" ||
+        code === "auth/popup-blocked";
+      const isIframe = typeof window !== "undefined" && window.self !== window.top;
+
+      if (isPopupFailure && !isIframe) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr) {
+          setError(formatAuthError(redirectErr));
+          return;
+        }
+      }
+
+      if (isPopupFailure && isIframe) {
+        try {
+          window.google?.accounts?.id?.prompt();
+        } catch {
+          /* Show explicit full-tab and redirect fallback controls below. */
+        }
+        setGoogleFallbackHelp(true);
+      }
       setError(formatAuthError(err));
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleGoogleRedirect = async () => {
+    setError("");
+    setInfoMsg("");
+    setBusy(true);
+    try {
+      await signInWithRedirect(auth, googleProvider);
+    } catch (err) {
+      setError(formatAuthError(err));
+      setBusy(false);
+    }
+  };
+
+  const handleServerEmailAuth = async (cleanEmail: string) => {
+    const endpoint = authTab === "signin" ? "/api/auth/signin" : "/api/auth/signup";
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ email: cleanEmail, password }),
+    });
+    const data = (await res.json()) as {
+      error?: string;
+      user?: { uid?: string; email?: string };
+      profile?: SetupProfile | null;
+    };
+    if (!res.ok || !data.user?.uid) {
+      setError(data.error || "Authentication failed. Please try again.");
+      return;
+    }
+    await hydrateOrStartOnboarding(
+      data.user.uid,
+      data.user.email ?? cleanEmail,
+      null,
+      data.profile ?? null,
+    );
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -236,6 +509,7 @@ export function Auth({
 
     setError("");
     setInfoMsg("");
+    setGoogleFallbackHelp(false);
     setBusy(true);
     try {
       if (authTab === "signin") {
@@ -263,7 +537,15 @@ export function Auth({
         setInfoMsg(`We sent a verification link to ${cleanEmail}.`);
       }
     } catch (err) {
-      setError(formatAuthError(err));
+      if (getAuthErrorCode(err) === "auth/operation-not-allowed") {
+        try {
+          await handleServerEmailAuth(cleanEmail);
+        } catch {
+          setError("Could not reach the sign-in service. Check your connection and try again.");
+        }
+      } else {
+        setError(formatAuthError(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -282,7 +564,13 @@ export function Auth({
       await sendPasswordResetEmail(auth, cleanEmail);
       setInfoMsg(`Password reset email sent to ${cleanEmail}.`);
     } catch (err) {
-      setError(formatAuthError(err));
+      if (getAuthErrorCode(err) === "auth/operation-not-allowed") {
+        setInfoMsg(
+          "Password reset emails activate once Email/Password is toggled on in Firebase Console. Or sign in with Google above.",
+        );
+      } else {
+        setError(formatAuthError(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -348,12 +636,26 @@ export function Auth({
     setBusy(true);
     setError("");
     try {
-      await saveCloudProfile(uid, auth.currentUser?.email ?? email, finalProfile);
+      if (uid.startsWith("srv_")) {
+        const res = await fetch("/api/auth/profile", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ profile: finalProfile }),
+        });
+        if (!res.ok) {
+          const payload = (await res.json().catch(() => ({}))) as { error?: string };
+          setError(payload.error || "Could not save your profile right now.");
+          return;
+        }
+      } else {
+        await saveCloudProfile(uid, auth.currentUser?.email ?? email, finalProfile);
+      }
       onLogin(uid, finalProfile);
     } catch (err) {
       setError(
         err instanceof Error
-          ? "Could not save your profile to the cloud right now. Please try again."
+          ? "Could not save your profile right now. Please try again."
           : "Could not save your profile.",
       );
     } finally {
@@ -365,590 +667,887 @@ export function Auth({
     setProfile((p) => ({ ...p, [key]: toggleSelection(p[key], id) }));
 
   const field =
-    "h-12 w-full rounded-lg border border-border bg-card px-4 text-base outline-none transition focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-muted-foreground";
+    "min-h-[48px] w-full rounded-xl border border-[#2A2A32] bg-[#0A0A0C] px-4 text-base text-foreground outline-none transition duration-150 focus:border-[#FFB800] focus:ring-1 focus:ring-[#FFB800] placeholder:text-zinc-500";
 
   const initial = (profile.name.trim() || profile.handle.trim() || "T").charAt(0).toUpperCase();
+  const fullTabHref = typeof window !== "undefined" ? window.location.href : "/";
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0C]">
-      <header className="mx-auto flex max-w-6xl items-center justify-between border-b border-[#222228] px-5 py-5 sm:px-8">
-        <div className="flex items-center gap-2">
-          <LogoMark className="h-9 w-9" />
-          <Wordmark className="text-2xl" />
+    <div className="relative min-h-dvh overflow-x-clip bg-[#0A0A0C] text-foreground">
+      {/* Ambient Obsidian & Gold Spotlight Background */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -left-28 -top-28 h-[420px] w-[420px] rounded-full bg-[#FFB800]/[0.08] blur-[120px]" />
+        <div className="absolute -bottom-32 -right-24 h-[380px] w-[380px] rounded-full bg-[#FFB800]/[0.05] blur-[120px]" />
+      </div>
+
+      {/* Minimal Top Bar */}
+      <header className="sticky top-0 z-30 border-b border-[#222228] bg-[#0A0A0C]/90 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-5 sm:px-8">
+          <div className="flex shrink-0 items-center gap-2.5 whitespace-nowrap">
+            <LogoMark className="h-8 w-8 sm:h-9 sm:w-9" />
+            <Wordmark className="text-xl sm:text-2xl" />
+          </div>
+          <p className="truncate text-xs font-medium tracking-wide text-zinc-400">
+            Your circle · Your vibe
+          </p>
         </div>
-        <span className="text-xs font-medium text-muted-foreground">YOUR CIRCLE. YOUR VIBE.</span>
       </header>
-      <main
-        className={`mx-auto w-full px-5 pb-12 pt-7 sm:px-8 sm:pt-12 ${step < 2 ? "max-w-lg" : "max-w-3xl"}`}
-      >
-        <ol aria-label="Setup progress" className="mb-10 flex items-start justify-between gap-2">
-          {steps.map((label, i) => (
-            <li
-              key={label}
-              aria-current={step === i ? "step" : undefined}
-              className="flex flex-1 flex-col gap-2"
+
+      <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-12 pt-5 sm:px-8 sm:pt-10">
+        <div
+          className={
+            step === 0
+              ? "grid grid-cols-1 gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-stretch lg:gap-10"
+              : "mx-auto max-w-2xl"
+          }
+        >
+          {/* Desktop Editorial & Live Creator Spotlight Column */}
+          {step === 0 && (
+            <section
+              aria-label="Tumeni creator showcase"
+              className="hidden flex-col justify-between gap-6 py-2 lg:flex"
             >
-              <span className={`h-1 rounded-full ${i <= step ? "bg-[#FFB800]" : "bg-[#222228]"}`} />
-              <span
-                className={`text-xs ${i === step ? "font-medium text-[#FFB800]" : "text-muted-foreground"}`}
-              >
-                {label}
-              </span>
-            </li>
-          ))}
-        </ol>
-        <div className="animate-rise" key={step}>
-          <p className="mb-3 text-xs font-medium uppercase tracking-widest text-[#FFB800]">
-            {step === 0 ? "Welcome to tumeni." : `Step ${step + 1} of 4`}
-          </p>
-          <h1 className="text-3xl font-semibold sm:text-4xl">
-            {
-              [
-                needsVerification
-                  ? "Check your inbox."
-                  : authTab === "signin"
-                    ? "Sign in to tumeni."
-                    : "Create your account.",
-                "Make it yours.",
-                "What’s your vibe?",
-                "Good company starts here.",
-              ][step]
-            }
-          </h1>
-          <p className="mb-8 mt-3 text-sm leading-relaxed text-muted-foreground">
-            {
-              [
-                needsVerification
-                  ? "Verify your email address so your account and circle stay synced across sessions."
-                  : authTab === "signin"
-                    ? "Welcome back. Your circle, saved drops, and profile stay synced in the cloud."
-                    : "Join tumeni. with a real account synced across sessions.",
-                "Upload your photo, set your city for local discovery, and pick your @handle.",
-                "Pick the things you love.",
-                "Your feed, reels, and circle are ready.",
-              ][step]
-            }
-          </p>
-
-          {step === 0 && !needsVerification && (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={() => void handleGoogleSignIn()}
-                className="google-signin h-12 w-full gap-[10px] rounded-lg px-3 text-sm [&_svg]:size-[18px]"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <G />}
-                Continue with Google
-              </Button>
-
-              <div className="my-6 flex items-center gap-4 text-xs text-muted-foreground">
-                <span className="h-px flex-1 bg-[#222228]" />
-                or use email &amp; password
-                <span className="h-px flex-1 bg-[#222228]" />
-              </div>
-
-              <div
-                className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-[#222228] bg-[#141418] p-1"
-                role="tablist"
-                aria-label="Authentication mode"
-              >
-                {(
-                  [
-                    { id: "signin", label: "Sign In" },
-                    { id: "signup", label: "Create Account" },
-                  ] as const
-                ).map((t) => (
-                  <Button
-                    key={t.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={authTab === t.id}
-                    variant={authTab === t.id ? "secondary" : "ghost"}
-                    onClick={() => {
-                      setAuthTab(t.id);
-                      setError("");
-                      setInfoMsg("");
-                    }}
-                    className={
-                      authTab === t.id
-                        ? "bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                        : "text-muted-foreground hover:text-foreground"
-                    }
-                  >
-                    {t.label}
-                  </Button>
-                ))}
-              </div>
-
-              <form className="space-y-4" onSubmit={(e) => void handleEmailAuth(e)}>
-                <label className="block space-y-2 text-sm font-medium">
-                  <span>Email address</span>
-                  <input
-                    className={field}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    placeholder="you@example.com"
-                    required
-                  />
-                </label>
-                <label className="block space-y-2 text-sm font-medium">
-                  <div className="flex items-center justify-between">
-                    <span>Password</span>
-                    {authTab === "signin" && (
-                      <button
-                        type="button"
-                        onClick={() => void handleResetPassword()}
-                        className="text-xs font-medium text-[#FFB800] hover:underline"
-                      >
-                        Forgot password?
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <input
-                      className={`${field} pr-12`}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      type={showPassword ? "text" : "password"}
-                      autoComplete={authTab === "signin" ? "current-password" : "new-password"}
-                      placeholder={
-                        authTab === "signin" ? "Enter your password" : "At least 6 characters"
-                      }
-                      minLength={6}
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                      className="absolute right-2 top-1.5"
-                    >
-                      {showPassword ? <EyeOff /> : <Eye />}
-                    </Button>
-                  </div>
-                </label>
-
-                {error && (
-                  <p
-                    role="alert"
-                    className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400"
-                  >
-                    {error}
-                  </p>
-                )}
-                {infoMsg && (
-                  <p
-                    role="status"
-                    className="rounded-lg border border-[#FFB800]/30 bg-[#FFB800]/10 p-3 text-xs text-[#FFB800]"
-                  >
-                    {infoMsg}
-                  </p>
-                )}
-
-                <Button
-                  type="submit"
-                  disabled={busy || !email.trim() || !password}
-                  className="h-12 w-full bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                >
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span>{authTab === "signin" ? "Sign In" : "Create Account"}</span>
-                      <ArrowRight />
-                    </>
-                  )}
-                </Button>
-              </form>
-            </>
-          )}
-
-          {step === 0 && needsVerification && (
-            <div className="space-y-4 rounded-2xl border border-[#222228] bg-[#141418] p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/40 bg-[#0A0A0C] text-[#FFB800]">
-                  <MailCheck className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground">Verify your email</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {auth.currentUser?.email || email}
-                  </p>
-                </div>
-              </div>
-
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Click the verification link sent to your inbox, then tap{" "}
-                <span className="font-semibold text-foreground">I&apos;ve verified — Continue</span>
-                .
-              </p>
-
-              {error && (
-                <p
-                  role="alert"
-                  className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400"
-                >
-                  {error}
+              <div className="space-y-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#FFB800]">
+                  Culture · Sound · Video · Circle
                 </p>
-              )}
-              {infoMsg && (
-                <p
-                  role="status"
-                  className="rounded-lg border border-[#FFB800]/30 bg-[#FFB800]/10 p-3 text-xs text-[#FFB800]"
-                >
-                  {infoMsg}
+                <h1 className="max-w-xl text-balance text-4xl font-bold leading-[1.08] tracking-tight text-white xl:text-5xl">
+                  Real drops. <span className="text-[#FFB800]">Real circle.</span> Zero noise.
+                </h1>
+                <p className="max-w-lg text-base leading-relaxed text-zinc-400">
+                  Comedy skits, Amapiano sets, daily vlogs, sports clips, and live rooms — built for
+                  creators and the people actually in their orbit.
                 </p>
-              )}
-
-              <div className="space-y-2.5 pt-1">
-                <Button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void handleCheckVerified()}
-                  className="h-12 w-full bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                >
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span>I&apos;ve verified — Continue</span>
-                      <ArrowRight />
-                    </>
-                  )}
-                </Button>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void handleResendVerification()}
-                    className="h-11 rounded-lg border-[#222228] bg-[#0A0A0C] text-xs"
-                  >
-                    Resend link
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void handleGoogleSignIn()}
-                    className="h-11 gap-2 rounded-lg border-[#222228] bg-[#0A0A0C] text-xs"
-                  >
-                    <G />
-                    <span>Use Google</span>
-                  </Button>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    void signOut(auth).catch(() => {});
-                    setNeedsVerification(false);
-                    setError("");
-                    setInfoMsg("");
-                  }}
-                  className="w-full text-xs text-muted-foreground"
-                >
-                  Use another email
-                </Button>
               </div>
-            </div>
-          )}
 
-          {step === 1 && (
-            <form
-              className="space-y-5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const message = profileError(profile.name, profile.handle);
-                setError(message);
-                if (!message) next();
-              }}
-            >
-              <div className="mb-7 flex items-center gap-5 rounded-2xl border border-[#222228] bg-[#141418] p-4">
-                {profile.avatar ? (
-                  <img
-                    src={profile.avatar}
-                    alt="Your uploaded avatar"
-                    className="h-20 w-20 shrink-0 rounded-full border-2 border-[#FFB800] object-cover"
-                  />
-                ) : (
-                  <div
-                    aria-label="Tumeni monogram avatar"
-                    className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-[#FFB800] bg-[#0A0A0C] text-2xl font-bold tracking-tight text-[#FFB800]"
-                  >
-                    {initial}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">Profile photo</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {profile.avatar
-                      ? "Custom photo selected from your device."
-                      : "Using your Tumeni gold monogram by default."}
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      disabled={avatarBusy}
-                      onClick={() => upload.current?.click()}
-                      className="min-h-[44px] gap-2 rounded-xl bg-[#FFB800] px-4 text-sm font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                    >
-                      <Camera className="h-4 w-4" />
-                      <span>{profile.avatar ? "Change Photo" : "Upload Photo"}</span>
-                    </Button>
-                    {profile.avatar && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setProfile((p) => ({ ...p, avatar: "" }))}
-                        className="min-h-[44px] text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        Use monogram
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <input
-                ref={upload}
-                hidden
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
-                    setError("Choose an image smaller than 5 MB.");
-                    return;
-                  }
-                  setAvatarBusy(true);
-                  void compressAvatarFile(file)
-                    .then((dataUrl) => {
-                      setProfile((p) => ({ ...p, avatar: dataUrl }));
-                      setError("");
-                    })
-                    .catch(() => {
-                      setError("This photo could not be opened. Try another.");
-                    })
-                    .finally(() => setAvatarBusy(false));
-                }}
-              />
-              <label className="block space-y-2 text-sm font-medium">
-                <span>Display name</span>
-                <input
-                  className={field}
-                  maxLength={50}
-                  autoComplete="nickname"
-                  value={profile.name}
-                  onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="Your name"
-                  required
-                />
-              </label>
-              <label className="block space-y-2 text-sm font-medium">
-                <span>@handle</span>
-                <div className="relative">
-                  <span className="absolute left-4 top-3 text-muted-foreground">@</span>
-                  <input
-                    className={`${field} pl-9`}
-                    maxLength={24}
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={profile.handle}
-                    onChange={(e) =>
-                      setProfile((p) => ({ ...p, handle: e.target.value.replace(/^@/, "") }))
-                    }
-                    placeholder="your.handle"
-                    required
-                  />
-                </div>
-              </label>
-              <div className="space-y-2">
-                <label className="block space-y-2 text-sm font-medium">
-                  <span>
-                    What city / vibe zone are you in?{" "}
-                    <span className="font-normal text-muted-foreground">· for People Near You</span>
-                  </span>
-                  <div className="relative">
-                    <MapPin className="absolute left-3.5 top-3.5 h-4 w-4 text-[#FFB800]" />
-                    <input
-                      className={`${field} pl-10`}
-                      maxLength={80}
-                      value={profile.location ?? ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const { city } = normalizeCity(val);
-                        setProfile((p) => ({ ...p, location: val, city }));
-                      }}
-                      placeholder="e.g. Johannesburg, Lagos, NYC, London..."
-                    />
-                  </div>
-                </label>
-                <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
-                  {POPULAR_CITIES.map((city) => {
-                    const active =
-                      (profile.location ?? "").trim().toLowerCase() === city.toLowerCase();
+              {/* Interactive Vibe Preview Stage */}
+              <div className="space-y-3">
+                <div
+                  className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[#222228] bg-[#141418] p-1"
+                  role="tablist"
+                  aria-label="Preview vibe lane"
+                >
+                  {SHOWCASE_LANES.map((lane) => {
+                    const active = lane.id === activePreview.id;
                     return (
                       <button
-                        key={city}
+                        key={lane.id}
                         type="button"
-                        onClick={() => setProfile((p) => ({ ...p, location: city, city }))}
-                        className={`min-h-[32px] shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition ${
-                          active
-                            ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
-                            : "border-[#222228] bg-[#141418] text-muted-foreground hover:text-foreground"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => {
+                          setActivePreviewId(lane.id);
+                          setPreviewAvatarBroken(false);
+                        }}
+                        className={`min-h-[40px] flex-1 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition duration-150 ${
+                          active ? "bg-[#FFB800] text-[#0A0A0C]" : "text-zinc-400 hover:text-white"
                         }`}
                       >
-                        {city}
+                        {lane.label}
                       </button>
                     );
                   })}
                 </div>
-              </div>
-              <label className="block space-y-2 text-sm font-medium">
-                <span>
-                  Bio <span className="font-normal text-muted-foreground">· optional</span>
-                </span>
-                <textarea
-                  className={`${field} h-24 resize-none py-3`}
-                  maxLength={160}
-                  value={profile.bio}
-                  onChange={(e) => setProfile((p) => ({ ...p, bio: e.target.value }))}
-                  placeholder="A little about you…"
-                />
-                <span className="block text-right text-xs text-muted-foreground">
-                  {profile.bio.length}/160
-                </span>
-              </label>
-              {error && (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              )}
-              <Button
-                type="submit"
-                disabled={avatarBusy}
-                className="h-12 w-full bg-[#FFB800] text-[#0A0A0C] hover:bg-[#FFB800]/90"
-              >
-                Continue <ArrowRight />
-              </Button>
-            </form>
-          )}
 
-          {step === 2 && (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {INTERESTS.map((label, i) => {
-                  const Icon = icons[i] ?? Flame;
-                  const selected = profile.interests.includes(label);
-                  return (
-                    <Button
-                      key={label}
-                      variant="outline"
-                      aria-pressed={selected}
-                      onClick={() => select("interests", label)}
-                      className={`relative h-auto flex-col items-start gap-0 overflow-hidden rounded-2xl bg-[#141418] p-0 text-left whitespace-normal ${
-                        selected
-                          ? "border-[#FFB800] ring-1 ring-[#FFB800]"
-                          : "border-[#222228] hover:border-[#FFB800]/50"
-                      }`}
-                    >
-                      <div className="relative flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br from-[#141418] to-[#0A0A0C] text-[#FFB800]">
-                        <Icon className="h-12 w-12" />
+                <div className="relative min-h-[320px] overflow-hidden rounded-3xl border border-[#222228] bg-[#141418]">
+                  <div
+                    className={`absolute inset-0 bg-gradient-to-br ${activePreview.accentGradient}`}
+                    aria-hidden="true"
+                  />
+                  <video
+                    key={activePreview.video}
+                    src={activePreview.video}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="absolute inset-0 h-full w-full object-cover opacity-75 transition-opacity duration-300"
+                  />
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 bg-gradient-to-t from-[#0A0A0C] via-[#0A0A0C]/45 to-transparent"
+                  />
+
+                  <div className="relative flex h-full min-h-[320px] flex-col justify-between p-6">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium text-zinc-200">
+                        {activePreview.label} · {activePreview.city}
+                      </span>
+                      <div className="flex items-end gap-1" aria-hidden="true">
+                        <span className="h-3 w-1 rounded-full bg-[#FFB800] animate-wave" />
                         <span
-                          className={`absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full border ${
-                            selected
-                              ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
-                              : "border-foreground/40 bg-[#0A0A0C]/60"
-                          }`}
-                        >
-                          {selected && <Check className="h-3.5 w-3.5" />}
+                          className="h-4 w-1 rounded-full bg-[#FFB800] animate-wave"
+                          style={{ animationDelay: "0.18s" }}
+                        />
+                        <span
+                          className="h-2.5 w-1 rounded-full bg-[#FFB800] animate-wave"
+                          style={{ animationDelay: "0.34s" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        {!previewAvatarBroken ? (
+                          <img
+                            src={activePreview.avatar}
+                            alt={activePreview.creator}
+                            referrerPolicy="no-referrer"
+                            onError={() => setPreviewAvatarBroken(true)}
+                            className="h-11 w-11 shrink-0 rounded-full border border-[#FFB800]/70 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/70 bg-[#141418] text-sm font-bold text-[#FFB800]">
+                            {activePreview.creator.charAt(0)}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">
+                            {activePreview.creator}
+                          </p>
+                          <p className="truncate text-xs text-zinc-300">
+                            {activePreview.handle} · {activePreview.city}
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="line-clamp-2 text-base font-medium leading-snug text-white">
+                        {activePreview.caption}
+                      </p>
+
+                      <div className="flex items-center justify-between gap-4 border-t border-white/10 pt-3 text-xs text-zinc-300">
+                        <span className="flex min-w-0 items-center gap-1.5 truncate">
+                          <Volume2 className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
+                          <span className="truncate">{activePreview.sound}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-zinc-200">
+                          {activePreview.likes} likes · {activePreview.drops}
                         </span>
                       </div>
-                      <span className="flex min-h-14 w-full items-center border-t border-[#222228] bg-[#141418] px-3.5 py-3 text-sm font-medium text-foreground">
-                        {label}
-                      </span>
-                    </Button>
-                  );
-                })}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="mt-7 flex items-center justify-between gap-4">
-                <span className="text-sm tabular-nums text-muted-foreground">
-                  {profile.interests.length} selected
-                </span>
-                <Button
-                  className="h-12 bg-[#FFB800] px-6 text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                  disabled={!profile.interests.length}
-                  onClick={next}
-                >
-                  Continue <ArrowRight />
-                </Button>
+
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+                <span className="font-medium text-zinc-200">Trending creators</span>
+                <span aria-hidden="true">·</span>
+                <span>@kairo.wav</span>
+                <span aria-hidden="true">·</span>
+                <span>@amapiano_plug</span>
+                <span aria-hidden="true">·</span>
+                <span>@hahahub</span>
+                <span aria-hidden="true">·</span>
+                <span>@vocal_luxe</span>
               </div>
-            </>
+            </section>
           )}
 
-          {step === 3 && (
-            <>
-              <div className="rounded-2xl border border-[#222228] bg-[#141418] px-5 py-8 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-[#FFB800]/40 bg-[#0A0A0C] text-[#FFB800]">
-                  <Check className="h-7 w-7" />
+          {/* Mobile Compact Creator Spotlight Strip (Step 0 only) */}
+          {step === 0 && !needsVerification && (
+            <section
+              aria-label="Live vibe preview"
+              className="overflow-hidden rounded-2xl border border-[#222228] bg-[#141418] lg:hidden"
+            >
+              <div className="relative p-4">
+                <div
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${activePreview.accentGradient} opacity-80`}
+                />
+                <div className="relative space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      {!previewAvatarBroken ? (
+                        <img
+                          src={activePreview.avatar}
+                          alt={activePreview.creator}
+                          referrerPolicy="no-referrer"
+                          onError={() => setPreviewAvatarBroken(true)}
+                          className="h-9 w-9 shrink-0 rounded-full border border-[#FFB800]/70 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/70 bg-[#0A0A0C] text-xs font-bold text-[#FFB800]">
+                          {activePreview.creator.charAt(0)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">
+                          {activePreview.creator}{" "}
+                          <span className="font-normal text-zinc-400">· {activePreview.city}</span>
+                        </p>
+                        <p className="truncate text-xs text-zinc-300">{activePreview.caption}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-end gap-0.5" aria-hidden="true">
+                      <span className="h-2.5 w-1 rounded-full bg-[#FFB800] animate-wave" />
+                      <span
+                        className="h-4 w-1 rounded-full bg-[#FFB800] animate-wave"
+                        style={{ animationDelay: "0.2s" }}
+                      />
+                      <span
+                        className="h-3 w-1 rounded-full bg-[#FFB800] animate-wave"
+                        style={{ animationDelay: "0.35s" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-[#0A0A0C]/70 p-1">
+                    {SHOWCASE_LANES.map((lane) => {
+                      const active = lane.id === activePreview.id;
+                      return (
+                        <button
+                          key={lane.id}
+                          type="button"
+                          onClick={() => {
+                            setActivePreviewId(lane.id);
+                            setPreviewAvatarBroken(false);
+                          }}
+                          className={`min-h-[36px] whitespace-nowrap rounded-lg px-2 text-xs font-semibold transition ${
+                            active ? "bg-[#FFB800] text-[#0A0A0C]" : "text-zinc-400"
+                          }`}
+                        >
+                          {lane.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <h2 className="mt-4 text-lg font-semibold">Your profile is synced</h2>
-                <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-                  {profile.location
-                    ? `Local radar tuned for ${profile.location}. Discover real drops, reels, and creators near you.`
-                    : "Discover real drops, reels, and creators inside."}
-                </p>
               </div>
-              {error && (
-                <p role="alert" className="mt-4 text-sm text-red-400">
-                  {error}
-                </p>
-              )}
-              <Button
-                disabled={busy}
-                className="mt-7 h-12 w-full bg-[#FFB800] text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                onClick={() => void handleFinishOnboarding()}
+            </section>
+          )}
+
+          {/* Primary Auth / Onboarding Card */}
+          <section className="relative flex flex-col justify-between overflow-hidden rounded-3xl border border-[#222228] bg-[#141418]/95 p-5 shadow-2xl shadow-black/60 sm:p-8">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#FFB800]/[0.07] to-transparent"
+            />
+
+            <div className="relative">
+              <ol
+                aria-label="Setup progress"
+                className="mb-7 flex items-start justify-between gap-2"
               >
-                {busy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+                {steps.map((label, i) => (
+                  <li
+                    key={label}
+                    aria-current={step === i ? "step" : undefined}
+                    className="flex flex-1 flex-col gap-1.5"
+                  >
+                    <span
+                      className={`h-1 rounded-full transition-colors ${
+                        i <= step ? "bg-[#FFB800]" : "bg-[#26262E]"
+                      }`}
+                    />
+                    <span
+                      className={`truncate text-[11px] sm:text-xs ${
+                        i === step ? "font-semibold text-[#FFB800]" : "text-zinc-500"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="animate-rise" key={step}>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#FFB800]">
+                  {step === 0 ? "Welcome to tumeni." : `Step ${step + 1} of 4`}
+                </p>
+                <h2 className="text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                  {
+                    [
+                      needsVerification
+                        ? "Check your inbox."
+                        : authTab === "signin"
+                          ? "Sign in to tumeni."
+                          : "Create your account.",
+                      "Make it yours.",
+                      "What’s your vibe?",
+                      "Your circle is ready.",
+                    ][step]
+                  }
+                </h2>
+                <p className="mb-6 mt-2 text-sm leading-relaxed text-zinc-400">
+                  {
+                    [
+                      needsVerification
+                        ? "Verify your email address so your account and circle stay synced."
+                        : authTab === "signin"
+                          ? "Welcome back. Your circle, saved drops, and profile are ready."
+                          : "Join with Google or email & password — your profile syncs across sessions.",
+                      "Add a photo, set your city for local discovery, and claim your @handle.",
+                      "Pick the lanes you want first in your For You feed.",
+                      "Your reels, audio drops, and local circle are locked in.",
+                    ][step]
+                  }
+                </p>
+
+                {step === 0 && !needsVerification && (
                   <>
-                    <span>Enter Tumeni</span>
-                    <ArrowRight />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void handleGoogleSignIn()}
+                      className="google-signin min-h-[48px] w-full gap-2.5 rounded-xl px-4 text-sm font-semibold [&_svg]:size-[18px]"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <G />}
+                      <span>Continue with Google</span>
+                    </Button>
+
+                    <div className="my-5 flex items-center gap-3 text-xs text-zinc-500">
+                      <span className="h-px flex-1 bg-[#26262E]" />
+                      <span>or continue with email</span>
+                      <span className="h-px flex-1 bg-[#26262E]" />
+                    </div>
+
+                    <div
+                      className="mb-5 grid grid-cols-2 gap-1 rounded-xl border border-[#26262E] bg-[#0A0A0C] p-1"
+                      role="tablist"
+                      aria-label="Authentication mode"
+                    >
+                      {(
+                        [
+                          { id: "signin", label: "Sign In" },
+                          { id: "signup", label: "Create Account" },
+                        ] as const
+                      ).map((t) => (
+                        <Button
+                          key={t.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={authTab === t.id}
+                          variant={authTab === t.id ? "secondary" : "ghost"}
+                          onClick={() => {
+                            setAuthTab(t.id);
+                            setError("");
+                            setInfoMsg("");
+                            setGoogleFallbackHelp(false);
+                          }}
+                          className={`min-h-[44px] whitespace-nowrap rounded-lg text-sm ${
+                            authTab === t.id
+                              ? "bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                              : "text-zinc-400 hover:text-white"
+                          }`}
+                        >
+                          {t.label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    <form className="space-y-4" onSubmit={(e) => void handleEmailAuth(e)}>
+                      <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                        <span>Email address</span>
+                        <input
+                          className={field}
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          type="email"
+                          inputMode="email"
+                          autoComplete="email"
+                          placeholder="you@example.com"
+                          required
+                        />
+                      </label>
+                      <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Password</span>
+                          {authTab === "signin" && (
+                            <button
+                              type="button"
+                              onClick={() => void handleResetPassword()}
+                              className="min-h-[32px] text-xs font-medium text-[#FFB800] hover:underline"
+                            >
+                              Forgot password?
+                            </button>
+                          )}
+                        </div>
+                        <div className="relative">
+                          <input
+                            className={`${field} pr-12`}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            type={showPassword ? "text" : "password"}
+                            autoComplete={
+                              authTab === "signin" ? "current-password" : "new-password"
+                            }
+                            placeholder={
+                              authTab === "signin" ? "Enter your password" : "At least 6 characters"
+                            }
+                            minLength={6}
+                            required
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowPassword(!showPassword)}
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                            className="absolute right-1.5 top-1 h-10 w-10 text-zinc-400 hover:text-white"
+                          >
+                            {showPassword ? <EyeOff /> : <Eye />}
+                          </Button>
+                        </div>
+                      </label>
+
+                      {error && (
+                        <div
+                          role="alert"
+                          className="space-y-2.5 rounded-xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs text-red-300"
+                        >
+                          <p className="leading-relaxed">{error}</p>
+                          {googleFallbackHelp && (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <a
+                                href={fullTabHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-[#0A0A0C] transition hover:bg-zinc-200"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span>Open in Full Tab for Google</span>
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => void handleGoogleRedirect()}
+                                className="inline-flex min-h-[40px] items-center rounded-lg border border-white/20 bg-white/5 px-3 text-xs font-medium text-white transition hover:bg-white/10"
+                              >
+                                Try Redirect Sign-In
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {infoMsg && (
+                        <p
+                          role="status"
+                          className="rounded-xl border border-[#FFB800]/30 bg-[#FFB800]/10 p-3.5 text-xs leading-relaxed text-[#FFB800]"
+                        >
+                          {infoMsg}
+                        </p>
+                      )}
+
+                      <Button
+                        type="submit"
+                        disabled={busy || !email.trim() || !password}
+                        className="min-h-[48px] w-full rounded-xl bg-[#FFB800] text-sm font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                      >
+                        {busy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <span>{authTab === "signin" ? "Sign In" : "Create Account"}</span>
+                            <ArrowRight />
+                          </>
+                        )}
+                      </Button>
+                    </form>
                   </>
                 )}
-              </Button>
-            </>
-          )}
 
-          {step > 0 && (
-            <Button
-              variant="ghost"
-              className="mt-5 px-0 text-muted-foreground"
-              onClick={() => {
-                setError("");
-                if (step === 1 && auth.currentUser) {
-                  void signOut(auth).catch(() => {});
-                  setAccount("");
-                  setNeedsVerification(false);
-                }
-                setStep((s) => s - 1);
-              }}
-            >
-              <ArrowLeft />
-              Back
-            </Button>
-          )}
+                {step === 0 && needsVerification && (
+                  <div className="space-y-4 rounded-2xl border border-[#26262E] bg-[#0A0A0C] p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/40 bg-[#141418] text-[#FFB800]">
+                        <MailCheck className="h-6 w-6" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white">Verify your email</p>
+                        <p className="truncate text-xs text-zinc-400">
+                          {auth.currentUser?.email || email}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="text-xs leading-relaxed text-zinc-400">
+                      Click the verification link sent to your inbox, then tap{" "}
+                      <span className="font-semibold text-white">
+                        I&apos;ve verified — Continue
+                      </span>
+                      .
+                    </p>
+
+                    {error && (
+                      <p
+                        role="alert"
+                        className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300"
+                      >
+                        {error}
+                      </p>
+                    )}
+                    {infoMsg && (
+                      <p
+                        role="status"
+                        className="rounded-xl border border-[#FFB800]/30 bg-[#FFB800]/10 p-3 text-xs text-[#FFB800]"
+                      >
+                        {infoMsg}
+                      </p>
+                    )}
+
+                    <div className="space-y-2.5 pt-1">
+                      <Button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void handleCheckVerified()}
+                        className="min-h-[48px] w-full rounded-xl bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                      >
+                        {busy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <span>I&apos;ve verified — Continue</span>
+                            <ArrowRight />
+                          </>
+                        )}
+                      </Button>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void handleResendVerification()}
+                          className="min-h-[44px] rounded-xl border-[#26262E] bg-[#141418] text-xs"
+                        >
+                          Resend link
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void handleGoogleSignIn()}
+                          className="min-h-[44px] gap-2 rounded-xl border-[#26262E] bg-[#141418] text-xs"
+                        >
+                          <G />
+                          <span>Use Google</span>
+                        </Button>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setNeedsVerification(false);
+                          setError("");
+                          setInfoMsg("");
+                          void signOut(auth).catch(() => {});
+                        }}
+                        className="min-h-[44px] w-full text-xs text-zinc-400"
+                      >
+                        Use another email
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {step === 1 && (
+                  <form
+                    className="space-y-5"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const message = profileError(profile.name, profile.handle);
+                      setError(message);
+                      if (!message) next();
+                    }}
+                  >
+                    <div className="flex items-center gap-4 rounded-2xl border border-[#26262E] bg-[#0A0A0C] p-4">
+                      {profile.avatar ? (
+                        <img
+                          src={profile.avatar}
+                          alt="Your uploaded avatar"
+                          referrerPolicy="no-referrer"
+                          className="h-20 w-20 shrink-0 rounded-full border-2 border-[#FFB800] object-cover"
+                        />
+                      ) : (
+                        <div
+                          aria-label="Tumeni monogram avatar"
+                          className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-[#FFB800] bg-[#141418] text-2xl font-bold tracking-tight text-[#FFB800]"
+                        >
+                          {initial}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white">Profile photo</p>
+                        <p className="mt-0.5 text-xs text-zinc-400">
+                          {profile.avatar
+                            ? "Custom photo selected from your device."
+                            : "Using your gold monogram by default."}
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            disabled={avatarBusy}
+                            onClick={() => upload.current?.click()}
+                            className="min-h-[44px] gap-2 rounded-xl bg-[#FFB800] px-4 text-sm font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                          >
+                            <Camera className="h-4 w-4" />
+                            <span>{profile.avatar ? "Change Photo" : "Upload Photo"}</span>
+                          </Button>
+                          {profile.avatar && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => setProfile((p) => ({ ...p, avatar: "" }))}
+                              className="min-h-[44px] text-xs text-zinc-400 hover:text-white"
+                            >
+                              Use monogram
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <input
+                      ref={upload}
+                      hidden
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+                          setError("Choose an image smaller than 5 MB.");
+                          return;
+                        }
+                        setAvatarBusy(true);
+                        void compressAvatarFile(file)
+                          .then((dataUrl) => {
+                            setProfile((p) => ({ ...p, avatar: dataUrl }));
+                            setError("");
+                          })
+                          .catch(() => {
+                            setError("This photo could not be opened. Try another.");
+                          })
+                          .finally(() => setAvatarBusy(false));
+                      }}
+                    />
+                    <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                      <span>Display name</span>
+                      <input
+                        className={field}
+                        maxLength={50}
+                        autoComplete="nickname"
+                        value={profile.name}
+                        onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))}
+                        placeholder="Your name"
+                        required
+                      />
+                    </label>
+                    <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                      <span>@handle</span>
+                      <div className="relative">
+                        <span className="absolute left-4 top-3 text-zinc-500">@</span>
+                        <input
+                          className={`${field} pl-9`}
+                          maxLength={24}
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          value={profile.handle}
+                          onChange={(e) =>
+                            setProfile((p) => ({
+                              ...p,
+                              handle: e.target.value.replace(/^@/, ""),
+                            }))
+                          }
+                          placeholder="your.handle"
+                          required
+                        />
+                      </div>
+                    </label>
+                    <div className="space-y-2">
+                      <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                        <span>
+                          What city / vibe zone are you in?{" "}
+                          <span className="font-normal text-zinc-400">· for People Near You</span>
+                        </span>
+                        <div className="relative">
+                          <MapPin className="absolute left-3.5 top-3.5 h-4 w-4 text-[#FFB800]" />
+                          <input
+                            className={`${field} pl-10`}
+                            maxLength={80}
+                            value={profile.location ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const { city } = normalizeCity(val);
+                              setProfile((p) => ({ ...p, location: val, city }));
+                            }}
+                            placeholder="e.g. Johannesburg, Lagos, NYC, London..."
+                          />
+                        </div>
+                      </label>
+                      <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
+                        {POPULAR_CITIES.map((city) => {
+                          const active =
+                            (profile.location ?? "").trim().toLowerCase() === city.toLowerCase();
+                          return (
+                            <button
+                              key={city}
+                              type="button"
+                              onClick={() => setProfile((p) => ({ ...p, location: city, city }))}
+                              className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-xl border px-3 text-xs font-medium transition ${
+                                active
+                                  ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
+                                  : "border-[#26262E] bg-[#0A0A0C] text-zinc-400 hover:text-white"
+                              }`}
+                            >
+                              {city}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                      <span>
+                        Bio <span className="font-normal text-zinc-400">· optional</span>
+                      </span>
+                      <textarea
+                        className={`${field} h-24 resize-none py-3`}
+                        maxLength={160}
+                        value={profile.bio}
+                        onChange={(e) => setProfile((p) => ({ ...p, bio: e.target.value }))}
+                        placeholder="A little about you…"
+                      />
+                      <span className="block text-right text-xs tabular-nums text-zinc-500">
+                        {profile.bio.length}/160
+                      </span>
+                    </label>
+                    {error && (
+                      <p role="alert" className="text-sm text-red-400">
+                        {error}
+                      </p>
+                    )}
+                    <Button
+                      type="submit"
+                      disabled={avatarBusy}
+                      className="min-h-[48px] w-full rounded-xl bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                    >
+                      <span>Continue</span>
+                      <ArrowRight />
+                    </Button>
+                  </form>
+                )}
+
+                {step === 2 && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {INTERESTS.map((label, i) => {
+                        const Icon = icons[i] ?? Flame;
+                        const selected = profile.interests.includes(label);
+                        return (
+                          <Button
+                            key={label}
+                            type="button"
+                            variant="outline"
+                            aria-pressed={selected}
+                            onClick={() => select("interests", label)}
+                            className={`relative h-auto flex-col items-start gap-0 overflow-hidden rounded-2xl bg-[#0A0A0C] p-0 text-left whitespace-normal ${
+                              selected
+                                ? "border-[#FFB800] ring-1 ring-[#FFB800]"
+                                : "border-[#26262E] hover:border-[#FFB800]/50"
+                            }`}
+                          >
+                            <div className="relative flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br from-[#1C1810] via-[#141418] to-[#0A0A0C] text-[#FFB800]">
+                              <Icon className="h-11 w-11" />
+                              <span
+                                className={`absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full border ${
+                                  selected
+                                    ? "border-[#FFB800] bg-[#FFB800] text-[#0A0A0C]"
+                                    : "border-white/30 bg-[#0A0A0C]/70"
+                                }`}
+                              >
+                                {selected && <Check className="h-3.5 w-3.5" />}
+                              </span>
+                            </div>
+                            <span className="flex min-h-14 w-full items-center border-t border-[#26262E] bg-[#141418] px-3.5 py-2.5 text-sm font-medium text-white">
+                              {label}
+                            </span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-7 flex items-center justify-between gap-4">
+                      <span className="text-sm tabular-nums text-zinc-400">
+                        {profile.interests.length} selected
+                      </span>
+                      <Button
+                        type="button"
+                        className="min-h-[48px] rounded-xl bg-[#FFB800] px-6 font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                        disabled={!profile.interests.length}
+                        onClick={next}
+                      >
+                        <span>Continue</span>
+                        <ArrowRight />
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {step === 3 && (
+                  <>
+                    <div className="rounded-2xl border border-[#26262E] bg-[#0A0A0C] px-5 py-8 text-center">
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-[#FFB800]/40 bg-[#141418] text-[#FFB800]">
+                        <Check className="h-7 w-7" />
+                      </div>
+                      <h3 className="mt-4 text-lg font-semibold text-white">
+                        Your profile is synced
+                      </h3>
+                      <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-zinc-400">
+                        {profile.location
+                          ? `Local radar tuned for ${profile.location}. Discover real drops, reels, and creators near you.`
+                          : "Discover real drops, reels, and creators inside."}
+                      </p>
+                    </div>
+                    {error && (
+                      <p role="alert" className="mt-4 text-sm text-red-400">
+                        {error}
+                      </p>
+                    )}
+                    <Button
+                      type="button"
+                      disabled={busy}
+                      className="mt-7 min-h-[48px] w-full rounded-xl bg-[#FFB800] font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                      onClick={() => void handleFinishOnboarding()}
+                    >
+                      {busy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <span>Enter Tumeni</span>
+                          <ArrowRight />
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
+
+                {step > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-4 min-h-[44px] px-0 text-zinc-400 hover:text-white"
+                    onClick={() => {
+                      setError("");
+                      if (step === 1 && auth.currentUser) {
+                        void signOut(auth).catch(() => {});
+                        setAccount("");
+                        setNeedsVerification(false);
+                      } else if (step === 1 && account.startsWith("srv_")) {
+                        void fetch("/api/auth/logout", {
+                          method: "POST",
+                          credentials: "same-origin",
+                        }).catch(() => {});
+                        setAccount("");
+                      }
+                      setStep((s) => s - 1);
+                    }}
+                  >
+                    <ArrowLeft />
+                    <span>Back</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </main>
     </div>

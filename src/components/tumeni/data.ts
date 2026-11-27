@@ -49,6 +49,34 @@ const USER_MAP = {
   taya: { id: "taya", name: "Taya V.", handle: "@taya.v", avatar: avatar(41), verified: true },
   jae: { id: "jae", name: "Jae Studio", handle: "@jae.studio", avatar: avatar(52) },
   kairo: { id: "kairo", name: "Kairo FM", handle: "@kairo.fm", avatar: avatar(61), verified: true },
+  kairoWav: {
+    id: "kairo-wav",
+    name: "Kairo Beats",
+    handle: "@kairo.wav",
+    avatar: avatar(61),
+    verified: true,
+  },
+  amapianoPlug: {
+    id: "amapiano-plug",
+    name: "The Groove Plug",
+    handle: "@amapiano_plug",
+    avatar: avatar(14),
+    verified: true,
+  },
+  streetHeatSa: {
+    id: "street-heat-sa",
+    name: "Durban Visuals",
+    handle: "@street_heat_sa",
+    avatar: avatar(31),
+    verified: true,
+  },
+  vocalLuxe: {
+    id: "vocal-luxe",
+    name: "Nia Rose",
+    handle: "@vocal_luxe",
+    avatar: avatar(44),
+    verified: true,
+  },
   amara: {
     id: "amara",
     name: "Amara Moves",
@@ -57,6 +85,129 @@ const USER_MAP = {
     verified: true,
   },
 } satisfies Record<string, User>;
+
+export type CreatorProfileMeta = {
+  bio: string;
+  location: string;
+  followers: number;
+  following: number;
+  coverGradient: string;
+};
+
+export const CREATOR_PROFILES: Record<string, CreatorProfileMeta> = {
+  "kairo-wav": {
+    bio: "Afro-tech & Amapiano producer · Cooking 3 AM stems & unreleased log drum drops.",
+    location: "Johannesburg",
+    followers: 184200,
+    following: 142,
+    coverGradient: "from-[#FFB800]/30 via-[#1E1A12] to-[#0A0A0C]",
+  },
+  "amapiano-plug": {
+    bio: "The Groove Plug · Live DJ moments, private school piano & Konka crowds.",
+    location: "Johannesburg",
+    followers: 312000,
+    following: 96,
+    coverGradient: "from-amber-500/30 via-[#221610] to-[#0A0A0C]",
+  },
+  "street-heat-sa": {
+    bio: "Urban streetwear edits, golden hour fits & coastal visual storytelling.",
+    location: "Durban",
+    followers: 94800,
+    following: 215,
+    coverGradient: "from-orange-500/25 via-[#1C1612] to-[#0A0A0C]",
+  },
+  "vocal-luxe": {
+    bio: "Soul & R&B vocalist · Raw late-night booth takes, harmonies & live sessions.",
+    location: "London",
+    followers: 241500,
+    following: 184,
+    coverGradient: "from-rose-500/25 via-[#1C141A] to-[#0A0A0C]",
+  },
+  yung: {
+    bio: "Creative director, pop culture blog & trending creator.",
+    location: "Atlanta",
+    followers: 24800,
+    following: 190,
+    coverGradient: "from-[#FFB800]/25 via-[#181612] to-[#0A0A0C]",
+  },
+  haha: {
+    bio: "Daily comedy skits, pet chaos, and viral reactions.",
+    location: "London",
+    followers: 31500,
+    following: 88,
+    coverGradient: "from-amber-400/20 via-[#191610] to-[#0A0A0C]",
+  },
+  nala: {
+    bio: "Amapiano sets, street dance edits & downtown visuals.",
+    location: "Johannesburg",
+    followers: 14200,
+    following: 230,
+    coverGradient: "from-[#FFB800]/25 via-[#1A1610] to-[#0A0A0C]",
+  },
+  kito: {
+    bio: "Log drums, Rhodes chords, and midnight studio drops.",
+    location: "Johannesburg",
+    followers: 8900,
+    following: 120,
+    coverGradient: "from-cyan-500/20 via-[#121820] to-[#0A0A0C]",
+  },
+  zuri: {
+    bio: "Daily vlogs, travel diaries, food spots & good energy.",
+    location: "Cape Town",
+    followers: 18400,
+    following: 310,
+    coverGradient: "from-teal-500/20 via-[#121A18] to-[#0A0A0C]",
+  },
+  dre: {
+    bio: "Pickup hoops, football tricks, fitness & choreography.",
+    location: "NYC",
+    followers: 11300,
+    following: 175,
+    coverGradient: "from-orange-500/20 via-[#1A1512] to-[#0A0A0C]",
+  },
+  sora: {
+    bio: "Analog synths & rooftop sessions every Friday.",
+    location: "Lagos",
+    followers: 9600,
+    following: 144,
+    coverGradient: "from-indigo-500/20 via-[#141422] to-[#0A0A0C]",
+  },
+  milo: {
+    bio: "Sub bass designer & studio engineer.",
+    location: "Johannesburg",
+    followers: 4100,
+    following: 98,
+    coverGradient: "from-amber-500/20 via-[#181512] to-[#0A0A0C]",
+  },
+  taya: {
+    bio: "Quick recipes, morning routines & concert front-row POVs.",
+    location: "Toronto",
+    followers: 16700,
+    following: 205,
+    coverGradient: "from-[#FFB800]/20 via-[#1A1812] to-[#0A0A0C]",
+  },
+  jae: {
+    bio: "Midnight beats, Afrobeats rotations & comfort cooking.",
+    location: "Accra",
+    followers: 12400,
+    following: 162,
+    coverGradient: "from-emerald-500/20 via-[#121A15] to-[#0A0A0C]",
+  },
+  kairo: {
+    bio: "Night drives, radio edits & city soundtracks.",
+    location: "London",
+    followers: 15900,
+    following: 134,
+    coverGradient: "from-sky-500/20 via-[#121620] to-[#0A0A0C]",
+  },
+  amara: {
+    bio: "Amapiano choreography, fitness & street dance challenges.",
+    location: "Pretoria",
+    followers: 27400,
+    following: 264,
+    coverGradient: "from-[#FFB800]/25 via-[#1C1612] to-[#0A0A0C]",
+  },
+};
 
 export type UserId = keyof typeof USER_MAP;
 export const USERS: Record<UserId, User> = USER_MAP;
@@ -129,105 +280,9 @@ export type SuggestedPerson = {
   sharedWith: User[];
 };
 
-export const SUGGESTED_PEOPLE: SuggestedPerson[] = [
-  {
-    user: USER_MAP.haha,
-    bio: "Daily comedy skits, pet chaos, and viral reactions.",
-    vibeTag: "#Comedy",
-    location: "London",
-    city: "London",
-    mutuals: 17,
-    followers: 31500,
-    nearYou: false,
-    sharedWith: [USER_MAP.dre, USER_MAP.zuri, USER_MAP.kito],
-  },
-  {
-    user: USER_MAP.nala,
-    bio: "Amapiano sets, street dance edits & downtown visuals.",
-    vibeTag: "#Amapiano",
-    location: "Johannesburg",
-    city: "Johannesburg",
-    mutuals: 14,
-    followers: 14200,
-    nearYou: true,
-    sharedWith: [USER_MAP.zuri, USER_MAP.kito, USER_MAP.yung],
-  },
-  {
-    user: USER_MAP.zuri,
-    bio: "Daily vlogs, travel diaries, food spots & good energy.",
-    vibeTag: "#Vlogs",
-    location: "Cape Town",
-    city: "Cape Town",
-    mutuals: 6,
-    followers: 18400,
-    nearYou: true,
-    sharedWith: [USER_MAP.nala, USER_MAP.dre],
-  },
-  {
-    user: USER_MAP.dre,
-    bio: "Pickup hoops, football tricks, fitness & choreography.",
-    vibeTag: "#Sports",
-    location: "NYC",
-    city: "NYC",
-    mutuals: 11,
-    followers: 11300,
-    nearYou: false,
-    sharedWith: [USER_MAP.zuri, USER_MAP.kito, USER_MAP.haha],
-  },
-  {
-    user: USER_MAP.kito,
-    bio: "Log drums, Rhodes chords, and midnight studio drops.",
-    vibeTag: "#Producer",
-    location: "Johannesburg",
-    city: "Johannesburg",
-    mutuals: 9,
-    followers: 8900,
-    nearYou: true,
-    sharedWith: [USER_MAP.yung, USER_MAP.dre, USER_MAP.nala],
-  },
-  {
-    user: USER_MAP.yung,
-    bio: "Creative director, pop culture blog & trending creator.",
-    vibeTag: "#Lifestyle",
-    location: "Atlanta",
-    city: "Atlanta",
-    mutuals: 5,
-    followers: 24800,
-    nearYou: true,
-    sharedWith: [USER_MAP.kito, USER_MAP.nala],
-  },
-];
+export const SUGGESTED_PEOPLE: SuggestedPerson[] = [];
 
-export const FRIEND_REQUESTS: SuggestedPerson[] = [
-  {
-    user: {
-      id: "sora-req",
-      name: "Sora Waves",
-      handle: "@sora.wav",
-      avatar: avatar(25),
-      verified: true,
-    },
-    bio: "Analog synths & rooftop sessions every Friday.",
-    vibeTag: "#Synths",
-    location: "Lagos",
-    city: "Lagos",
-    mutuals: 8,
-    followers: 9600,
-    nearYou: true,
-    sharedWith: [USER_MAP.kito, USER_MAP.nala, USER_MAP.yung],
-  },
-  {
-    user: { id: "milo-req", name: "Milo 808", handle: "@milo808", avatar: avatar(33) },
-    bio: "Sub bass designer & studio engineer.",
-    vibeTag: "#Mixing",
-    location: "Johannesburg",
-    city: "Johannesburg",
-    mutuals: 4,
-    followers: 4100,
-    nearYou: true,
-    sharedWith: [USER_MAP.kito, USER_MAP.dre],
-  },
-];
+export const FRIEND_REQUESTS: SuggestedPerson[] = [];
 
 export type SoundCategory = "Trending" | "Hip-Hop & R&B" | "Amapiano & Afrobeats" | "Lo-Fi & Chill";
 
@@ -643,10 +698,129 @@ export type Post = {
   liked?: boolean | undefined;
   saved?: boolean | undefined;
   shares: number;
+  commentCount?: number | undefined;
+  soundDropsCount?: string | undefined;
   comments: Comment[];
 };
 
+export function toSoundTrackFromPost(post: Post): SoundTrack {
+  const rawTrack = post.track ?? `Original Audio — ${post.user.name}`;
+  const parts = rawTrack.split(/\s+—\s+/);
+  const title = parts[0]?.trim() || rawTrack;
+  const artist = parts[1]?.trim() || post.user.name;
+  return {
+    id: `post-sound-${post.id}`,
+    title,
+    artist,
+    category: post.lane === "amapiano" ? "Amapiano & Afrobeats" : "Trending",
+    duration: post.duration ?? "0:30",
+    cover: post.user.avatar?.startsWith("http") ? post.user.avatar : TRENDING_SOUNDS[0]!.cover,
+    url: post.soundUrl ?? "",
+    youtubeId: post.soundYoutubeId,
+    source: "tumeni. Sound",
+  };
+}
+
 export const SEED_POSTS: Post[] = [
+  {
+    id: "post-feat-1",
+    user: USER_MAP.kairoWav,
+    lane: "amapiano",
+    kind: "video",
+    audience: "public",
+    time: "3m ago",
+    caption: "Cooking that 3 AM baseline. Does this drop go hard or what? 🔥🔊",
+    tag: "#Amapiano #StudioHeat #AfroTech",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    mediaIsVideo: true,
+    track: "Original Sound — Kairo Beats · Unreleased Stems",
+    soundUrl: TRENDING_SOUNDS[9]!.url,
+    soundDropsCount: "14.8K drops",
+    views: 482000,
+    likes: 48200,
+    commentCount: 1240,
+    shares: 8410,
+    comments: [
+      { id: "cf-1a", user: USER_MAP.amapianoPlug, text: "Drop the full stems right now 🔥🔊" },
+      { id: "cf-1b", user: USER_MAP.vocalLuxe, text: "That log drum pocket is lethal!" },
+    ],
+  },
+  {
+    id: "post-feat-2",
+    user: USER_MAP.amapianoPlug,
+    lane: "amapiano",
+    kind: "video",
+    audience: "public",
+    time: "9m ago",
+    caption: "Crowd went crazy when the log drum dropped at Konka yesterday 🕺✨",
+    tag: "#Amapiano #Konka #LiveSet",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    mediaIsVideo: true,
+    track: "Mnike (Slowed + Reverb) — Tyler ICU",
+    soundUrl: TRENDING_SOUNDS[6]!.url,
+    soundDropsCount: "38.2K drops",
+    views: 940500,
+    likes: 94600,
+    commentCount: 3118,
+    shares: 15200,
+    comments: [
+      { id: "cf-2a", user: USER_MAP.kairoWav, text: "Konka floor never misses 🕺⚡" },
+      { id: "cf-2b", user: USER_MAP.amara, text: "Need this slowed edit immediately!" },
+    ],
+  },
+  {
+    id: "post-feat-3",
+    user: USER_MAP.streetHeatSa,
+    lane: "vlog",
+    kind: "video",
+    audience: "public",
+    time: "14m ago",
+    caption: "Golden hour fit check. Obsidian and amber only ⚡",
+    tag: "#tumeni #outfit",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    mediaIsVideo: true,
+    track: "Water (Club Mix) — Tyla",
+    soundUrl: TRENDING_SOUNDS[0]!.url,
+    soundDropsCount: "22.4K drops",
+    views: 312000,
+    likes: 32100,
+    commentCount: 642,
+    shares: 2930,
+    comments: [
+      { id: "cf-3a", user: USER_MAP.zuri, text: "Obsidian + amber palette is undefeated ⚡" },
+    ],
+  },
+  {
+    id: "post-feat-4",
+    user: USER_MAP.vocalLuxe,
+    lane: "music",
+    kind: "video",
+    audience: "public",
+    time: "22m ago",
+    caption: "Late night raw vocals in the booth. No autotune needed 🎙️✨",
+    tag: "#SoulSession #Vocals #RnB",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    mediaIsVideo: true,
+    track: "Soul Session 04 — Nia Rose",
+    soundUrl: TRENDING_SOUNDS[3]!.url,
+    soundDropsCount: "19.1K drops",
+    views: 589000,
+    likes: 61400,
+    commentCount: 1890,
+    shares: 5600,
+    comments: [
+      { id: "cf-4a", user: USER_MAP.yung, text: "Pure velvet on the mic 🎙️✨" },
+      { id: "cf-4b", user: USER_MAP.kairoWav, text: "Let's put this over an Afro-tech chord pad!" },
+    ],
+  },
   {
     id: "post-1",
     user: USER_MAP.haha,
