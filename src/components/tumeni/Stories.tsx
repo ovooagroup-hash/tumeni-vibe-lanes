@@ -11,21 +11,27 @@ const SEED: Story[] = [
   {
     user: USERS.haha,
     slides: [
-      { video: "https://cdn.coverr.co/videos/coverr-girl-touches-a-dog-s-nose-3909/720p.mp4" },
+      {
+        video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+      },
       { text: "More dog bloopers dropping tonight 😂🐶" },
     ],
   },
   {
     user: USERS.amara,
     slides: [
-      { video: "https://cdn.coverr.co/videos/coverr-woman-dancing-in-the-street-7552/720p.mp4" },
+      {
+        video:
+          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+      },
     ],
   },
   {
     user: USERS.zuri,
     slides: [
       {
-        video: "https://cdn.coverr.co/videos/coverr-vlogger-greeting-audience-by-the-sea/720p.mp4",
+        video:
+          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
       },
       { text: "Coastal vlog up on the feed 🌊📸" },
     ],
@@ -33,13 +39,21 @@ const SEED: Story[] = [
   {
     user: USERS.dre,
     slides: [
-      { video: "https://cdn.coverr.co/videos/coverr-slow-mo-basketball-hoop-5187/720p.mp4" },
+      {
+        video:
+          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      },
       { text: "Game winner in slow-mo 🏀🔥" },
     ],
   },
   {
     user: USERS.yung,
-    slides: [{ video: "https://cdn.coverr.co/videos/coverr-dj-at-a-party-8079/720p.mp4" }],
+    slides: [
+      {
+        video:
+          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+      },
+    ],
   },
   { user: USERS.taya, slides: [{ text: "5-min breakfast hack just dropped 🍳✨" }] },
 ];

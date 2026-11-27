@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Auth } from "@/components/tumeni/Auth";
 import { TumeniApp } from "@/components/tumeni/App";
 import { readSetup, type SetupProfile } from "@/components/tumeni/onboarding";
-import { upsertAccountRecord } from "@/components/tumeni/storage";
+import { getAccountRecord, upsertAccountRecord } from "@/components/tumeni/storage";
 import { supabase } from "@/integrations/supabase/client";
 
 const hasSupabaseConfig = Boolean(
@@ -43,7 +43,7 @@ export const Route = createFileRoute("/")({
 });
 
 function readProfileFromSupabaseUser(
-  _uid: string,
+  uid: string,
   metadata: Record<string, unknown> | undefined,
 ): SetupProfile | null {
   const metaProfile = metadata?.["tumeni_profile"];
@@ -51,7 +51,13 @@ function readProfileFromSupabaseUser(
     const parsed = readSetup(JSON.stringify(metaProfile));
     if (parsed) return parsed;
   }
-  return null;
+  try {
+    const localSaved = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
+    if (localSaved) return localSaved;
+  } catch {
+    /* Ignore storage access errors. */
+  }
+  return getAccountRecord(uid)?.profile ?? null;
 }
 
 function Index() {

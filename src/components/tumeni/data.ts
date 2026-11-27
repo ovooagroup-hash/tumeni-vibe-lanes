@@ -233,37 +233,37 @@ export const GRID: GridItem[] = [
   {
     id: "grid-1",
     type: "video",
-    src: "https://cdn.coverr.co/videos/coverr-dj-at-a-party-8079/720p.mp4",
+    src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     likes: 1342,
   },
   {
     id: "grid-2",
     type: "video",
-    src: "https://cdn.coverr.co/videos/coverr-woman-dancing-in-the-street-7552/720p.mp4",
+    src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     likes: 918,
   },
   {
     id: "grid-3",
     type: "video",
-    src: "https://cdn.coverr.co/videos/coverr-futuristic-car-speeding-in-neon-city/720p.mp4",
+    src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
     likes: 2504,
   },
   {
     id: "grid-4",
     type: "video",
-    src: "https://cdn.coverr.co/videos/coverr-dancing-in-room-with-graffiti-9584/720p.mp4",
+    src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
     likes: 1189,
   },
   {
     id: "grid-5",
     type: "video",
-    src: "https://cdn.coverr.co/videos/coverr-live-music-concert-5249/720p.mp4",
+    src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     likes: 1740,
   },
   {
     id: "grid-6",
     type: "video",
-    src: "https://cdn.coverr.co/videos/coverr-a-guy-listening-to-music-while-flipping-through-vinyl-records-9836/720p.mp4",
+    src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     likes: 860,
   },
 ];
@@ -572,8 +572,8 @@ export const STUDIO_FILTERS: StudioFilterOption[] = [
     id: "glam",
     label: "Glam Glow",
     emoji: "💫",
-    css: "brightness-105 contrast-105 saturate-110",
-    canvasFilter: "brightness(105%) contrast(105%) saturate(110%)",
+    css: "brightness-[1.06] contrast-[1.05] saturate-[1.15]",
+    canvasFilter: "brightness(1.06) contrast(1.05) saturate(1.15)",
     overlay: "bg-amber-400/10",
     swatch: "from-amber-200 via-amber-400 to-rose-300",
   },
@@ -581,8 +581,8 @@ export const STUDIO_FILTERS: StudioFilterOption[] = [
     id: "golden",
     label: "Golden Hour",
     emoji: "✨",
-    css: "sepia-[0.35] saturate-160 brightness-105 contrast-105",
-    canvasFilter: "sepia(35%) saturate(160%) brightness(105%) contrast(105%)",
+    css: "sepia-[0.3] saturate-[1.5] brightness-[1.04] -hue-rotate-[10deg]",
+    canvasFilter: "sepia(0.3) saturate(1.5) brightness(1.04) hue-rotate(-10deg)",
     overlay: "bg-gradient-to-tr from-[#FFB800]/25 via-transparent to-[#FFB800]/15",
     swatch: "from-[#FFB800] via-orange-400 to-amber-700",
   },
@@ -590,8 +590,8 @@ export const STUDIO_FILTERS: StudioFilterOption[] = [
     id: "vintage",
     label: "Vintage 90s",
     emoji: "🎬",
-    css: "sepia-[0.25] contrast-115 brightness-95 saturate-125",
-    canvasFilter: "sepia(25%) contrast(115%) brightness(95%) saturate(125%)",
+    css: "contrast-[1.15] sepia-[0.2] saturate-[0.85]",
+    canvasFilter: "contrast(1.15) sepia(0.2) saturate(0.85)",
     overlay: "bg-amber-900/10",
     swatch: "from-amber-300 via-stone-500 to-stone-800",
   },
@@ -599,8 +599,8 @@ export const STUDIO_FILTERS: StudioFilterOption[] = [
     id: "cyber",
     label: "Cyber Neon",
     emoji: "⚡",
-    css: "saturate-150 contrast-120 hue-rotate-[18deg]",
-    canvasFilter: "saturate(150%) contrast(120%) hue-rotate(18deg)",
+    css: "contrast-[1.25] saturate-[1.7] hue-rotate-[15deg]",
+    canvasFilter: "contrast(1.25) saturate(1.7) hue-rotate(15deg)",
     overlay: "bg-gradient-to-tr from-cyan-500/15 via-transparent to-[#FFB800]/15",
     swatch: "from-cyan-400 via-indigo-500 to-[#FFB800]",
   },
@@ -608,17 +608,17 @@ export const STUDIO_FILTERS: StudioFilterOption[] = [
     id: "noir",
     label: "Moody Noir",
     emoji: "🖤",
-    css: "grayscale contrast-135 brightness-95",
-    canvasFilter: "grayscale(100%) contrast(135%) brightness(95%)",
+    css: "grayscale contrast-[1.35] brightness-[0.9]",
+    canvasFilter: "grayscale(1) contrast(1.35) brightness(0.9)",
     overlay: "bg-[#0A0A0C]/15",
     swatch: "from-zinc-200 via-zinc-600 to-black",
   },
   {
     id: "bronze",
-    label: "Bronze Skin",
+    label: "Caramel Bronze",
     emoji: "☀️",
-    css: "sepia-[0.2] saturate-140 contrast-110",
-    canvasFilter: "sepia(20%) saturate(140%) contrast(110%)",
+    css: "sepia-[0.25] contrast-[1.1] saturate-[1.3] brightness-[0.98]",
+    canvasFilter: "sepia(0.25) contrast(1.1) saturate(1.3) brightness(0.98)",
     overlay: "bg-orange-500/10",
     swatch: "from-amber-400 via-amber-700 to-stone-900",
   },
@@ -626,8 +626,8 @@ export const STUDIO_FILTERS: StudioFilterOption[] = [
     id: "teal",
     label: "Cinematic Teal",
     emoji: "🎥",
-    css: "contrast-115 saturate-135 hue-rotate-[-10deg]",
-    canvasFilter: "contrast(115%) saturate(135%) hue-rotate(-10deg)",
+    css: "contrast-[1.2] saturate-[1.25] -hue-rotate-[15deg]",
+    canvasFilter: "contrast(1.2) saturate(1.25) hue-rotate(-15deg)",
     overlay: "bg-gradient-to-tr from-teal-500/15 via-transparent to-orange-500/10",
     swatch: "from-teal-400 via-cyan-700 to-orange-400",
   },
@@ -639,14 +639,15 @@ export function computeFilterCss(filter: StudioFilterOption, intensity = 100): s
   if (t >= 0.99) return filter.canvasFilter;
   const parts: string[] = [];
   for (const token of filter.canvasFilter.split(/\s+/)) {
-    const m = /^([a-z-]+)\((-?\d+(?:\.\d+)?)(%|deg)\)$/.exec(token);
+    const m = /^([a-z-]+)\((-?\d+(?:\.\d+)?)(%|deg)?\)$/.exec(token);
     if (!m) continue;
     const fn = m[1]!;
     const val = Number(m[2]);
-    const unit = m[3]!;
-    const base = fn === "brightness" || fn === "contrast" || fn === "saturate" ? 100 : 0;
+    const unit = m[3] ?? "";
+    const isIdentityOne = fn === "brightness" || fn === "contrast" || fn === "saturate";
+    const base = isIdentityOne ? (unit === "%" ? 100 : 1) : 0;
     const mixed = base + (val - base) * t;
-    parts.push(`${fn}(${mixed.toFixed(1)}${unit})`);
+    parts.push(`${fn}(${mixed.toFixed(2)}${unit})`);
   }
   return parts.length > 0 ? parts.join(" ") : "none";
 }
@@ -830,8 +831,8 @@ export const SEED_POSTS: Post[] = [
     time: "8m ago",
     caption: "POV: When a friendly snowball fight turns into a full-on ambush 😂❄️",
     tag: "#Funny #Comedy #WinterFails",
-    video: "https://cdn.coverr.co/videos/coverr-snowball-fighting-in-the-forest-7136/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-snowball-fighting-in-the-forest-7136/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     mediaIsVideo: true,
     track: "Original Comedy Audio — @hahahub",
     views: 94200,
@@ -851,8 +852,8 @@ export const SEED_POSTS: Post[] = [
     time: "18m ago",
     caption: "Amapiano street groove — wait for the log drum drop on the second beat 🎹🔥",
     tag: "#Amapiano #DanceChallenge",
-    video: "https://cdn.coverr.co/videos/coverr-woman-dancing-in-the-street-7552/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-woman-dancing-in-the-street-7552/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     mediaIsVideo: true,
     track: "Tanzania (feat. Sino Msolo) — Uncle Waffles & Tony Duardo",
     soundUrl: TRENDING_SOUNDS[6]!.url,
@@ -870,8 +871,8 @@ export const SEED_POSTS: Post[] = [
     time: "27m ago",
     caption: "Day in my life vlog: morning ocean air before editing all afternoon 🌊📸",
     tag: "#DailyVlog #LifestyleBlog",
-    video: "https://cdn.coverr.co/videos/coverr-vlogger-greeting-audience-by-the-sea/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-vlogger-greeting-audience-by-the-sea/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
     mediaIsVideo: true,
     track: "Daily Vlog Audio — @zuri.k",
     views: 42100,
@@ -888,8 +889,8 @@ export const SEED_POSTS: Post[] = [
     time: "41m ago",
     caption: "Testing the 'boop the nose' challenge on my dog… he was NOT amused 🐶😂",
     tag: "#FunnyPets #DogsOfTumeni",
-    video: "https://cdn.coverr.co/videos/coverr-girl-touches-a-dog-s-nose-3909/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-girl-touches-a-dog-s-nose-3909/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     mediaIsVideo: true,
     track: "Original Sound — @hahahub",
     views: 136800,
@@ -908,8 +909,10 @@ export const SEED_POSTS: Post[] = [
     time: "55m ago",
     caption: "Friday night Amapiano booth going crazy — crowd asked for three rewinds 🎧🎹",
     tag: "#Amapiano #ClubVibes",
-    video: "https://cdn.coverr.co/videos/coverr-dj-at-a-party-8079/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-dj-at-a-party-8079/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
     mediaIsVideo: true,
     track: "Margaret — Major League DJz & Victony",
     soundUrl: TRENDING_SOUNDS[9]!.url,
@@ -927,8 +930,10 @@ export const SEED_POSTS: Post[] = [
     time: "1h ago",
     caption: "Nothing but net on the slow-mo buzzer beater — game point 🏀🔥",
     tag: "#Basketball #Sports #Clutch",
-    video: "https://cdn.coverr.co/videos/coverr-slow-mo-basketball-hoop-5187/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-slow-mo-basketball-hoop-5187/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
     mediaIsVideo: true,
     track: "Court Side Mic — @dre.moves",
     views: 61500,
@@ -945,8 +950,8 @@ export const SEED_POSTS: Post[] = [
     time: "1h ago",
     caption: "5-minute breakfast egg hack for busy mornings — rate the crack 🍳✨",
     tag: "#FoodBlog #QuickRecipe #Vlog",
-    video: "https://cdn.coverr.co/videos/coverr-breaking-an-egg-9198/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-breaking-an-egg-9198/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     mediaIsVideo: true,
     track: "Kitchen ASMR — @taya.v",
     views: 49300,
@@ -964,10 +969,8 @@ export const SEED_POSTS: Post[] = [
     caption:
       "Board game night always starts peaceful and ends with someone flipping the table 😭🎲",
     tag: "#Comedy #GameNight #Relatable",
-    video:
-      "https://cdn.coverr.co/videos/coverr-a-couple-having-fun-while-playing-a-board-game-335/720p.mp4",
-    media:
-      "https://cdn.coverr.co/videos/coverr-a-couple-having-fun-while-playing-a-board-game-335/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     mediaIsVideo: true,
     track: "Original Audio — @hahahub",
     views: 83400,
@@ -984,8 +987,10 @@ export const SEED_POSTS: Post[] = [
     time: "2h ago",
     caption: "Neon night fit check — thrifted leather jacket + gold hoops ⚡🧥",
     tag: "#FitCheck #FashionBlog #GRWM",
-    video: "https://cdn.coverr.co/videos/coverr-neon-glow-fashion-portrait/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-neon-glow-fashion-portrait/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
     mediaIsVideo: true,
     track: "Water — Tyla",
     soundUrl: TRENDING_SOUNDS[0]!.url,
@@ -1003,8 +1008,10 @@ export const SEED_POSTS: Post[] = [
     time: "3h ago",
     caption: "Me at 7 AM pretending I'm ready for my morning meeting 😹☕",
     tag: "#CatTok #Funny #Mood",
-    video: "https://cdn.coverr.co/videos/coverr-kitten-yawning-488/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-kitten-yawning-488/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
     mediaIsVideo: true,
     track: "Sleepy Vibes — @milo808",
     views: 109400,
@@ -1037,8 +1044,8 @@ export const SEED_POSTS: Post[] = [
     time: "4h ago",
     caption: "Graffiti room Amapiano combo — try learning the step in 15 seconds 💃🎹",
     tag: "#Amapiano #Choreo #FYP",
-    video: "https://cdn.coverr.co/videos/coverr-dancing-in-room-with-graffiti-9584/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-dancing-in-room-with-graffiti-9584/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     mediaIsVideo: true,
     track: "Water — Tyla",
     soundUrl: TRENDING_SOUNDS[0]!.url,
@@ -1056,10 +1063,8 @@ export const SEED_POSTS: Post[] = [
     time: "4h ago",
     caption: "Solo travel diary: landing in a new city with one carry-on & zero plans ✈️🌏",
     tag: "#TravelBlog #TravelVlog",
-    video:
-      "https://cdn.coverr.co/videos/coverr-young-traveler-with-a-suitcase-crossing-the-street-at-the-crosswalk/720p.mp4",
-    media:
-      "https://cdn.coverr.co/videos/coverr-young-traveler-with-a-suitcase-crossing-the-street-at-the-crosswalk/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     mediaIsVideo: true,
     track: "Travel Diary — @zuri.k",
     views: 57900,
@@ -1076,8 +1081,8 @@ export const SEED_POSTS: Post[] = [
     time: "5h ago",
     caption: "When your friend hits the wrong cue during an empty-hallway dance video 😂",
     tag: "#Comedy #DanceFail",
-    video: "https://cdn.coverr.co/videos/coverr-dancing-in-an-empty-building-895/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-dancing-in-an-empty-building-895/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
     mediaIsVideo: true,
     track: "Original Comedy — @hahahub",
     views: 78400,
@@ -1094,8 +1099,8 @@ export const SEED_POSTS: Post[] = [
     time: "5h ago",
     caption: "Golden hour outdoor Amapiano DJ session — full tracklist in the comments 👇",
     tag: "#Amapiano #OutdoorSet",
-    video: "https://cdn.coverr.co/videos/coverr-outdoor-dj-9787/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-outdoor-dj-9787/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     mediaIsVideo: true,
     track: "Fall — Davido",
     soundUrl: TRENDING_SOUNDS[8]!.url,
@@ -1113,8 +1118,10 @@ export const SEED_POSTS: Post[] = [
     time: "6h ago",
     caption: "Sunset beach football with the boys — winner buys dinner ⚽🌅",
     tag: "#Football #Soccer #BeachSports",
-    video: "https://cdn.coverr.co/videos/coverr-playing-football-on-a-beach-7320/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-playing-football-on-a-beach-7320/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
     mediaIsVideo: true,
     track: "Beach Match Audio — @dre.moves",
     views: 64200,
@@ -1131,8 +1138,10 @@ export const SEED_POSTS: Post[] = [
     time: "6h ago",
     caption: "Morning pour-over routine before answering emails ☕✨",
     tag: "#CoffeeVlog #MorningRoutine",
-    video: "https://cdn.coverr.co/videos/coverr-pouring-coffee-into-a-mug-1176/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-pouring-coffee-into-a-mug-1176/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
     mediaIsVideo: true,
     track: "Late Night Chill LoFi Beats — Lofi Chill Beats",
     soundUrl: TRENDING_SOUNDS[7]!.url,
@@ -1164,10 +1173,8 @@ export const SEED_POSTS: Post[] = [
     time: "7h ago",
     caption: "Caught my friend laughing at her own selfie mid-shoot 😂📱",
     tag: "#Funny #BestFriends #Laughs",
-    video:
-      "https://cdn.coverr.co/videos/coverr-close-up-of-a-woman-taking-a-photo-on-the-phone-and-laughing-7325/720p.mp4",
-    media:
-      "https://cdn.coverr.co/videos/coverr-close-up-of-a-woman-taking-a-photo-on-the-phone-and-laughing-7325/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     mediaIsVideo: true,
     track: "Original Sound — @hahahub",
     views: 52600,
@@ -1184,8 +1191,8 @@ export const SEED_POSTS: Post[] = [
     time: "8h ago",
     caption: "Midnight highway cruise through the neon skyline 🚗⚡",
     tag: "#NightDrive #CityVlog",
-    video: "https://cdn.coverr.co/videos/coverr-futuristic-car-speeding-in-neon-city/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-futuristic-car-speeding-in-neon-city/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     mediaIsVideo: true,
     track: "City Boys — Burna Boy",
     soundUrl: TRENDING_SOUNDS[2]!.url,
@@ -1203,8 +1210,10 @@ export const SEED_POSTS: Post[] = [
     time: "8h ago",
     caption: "Duo Amapiano vibe check — rate our sync 1 to 10! 💃🕺",
     tag: "#Amapiano #DuoDance",
-    video: "https://cdn.coverr.co/videos/coverr-couple-dancing-4825/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-couple-dancing-4825/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
     mediaIsVideo: true,
     track: "Calm Down — Rema & Selena Gomez",
     soundUrl: TRENDING_SOUNDS[4]!.url,
@@ -1223,9 +1232,9 @@ export const SEED_POSTS: Post[] = [
     caption: "Setting up the tripod for a raw 'get ready with me' vlog on the balcony 🎥☀️",
     tag: "#GRWM #VloggerLife",
     video:
-      "https://cdn.coverr.co/videos/coverr-a-girl-presses-record-on-a-camera-and-begins-a-vlog-2609/720p.mp4",
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
     media:
-      "https://cdn.coverr.co/videos/coverr-a-girl-presses-record-on-a-camera-and-begins-a-vlog-2609/720p.mp4",
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
     mediaIsVideo: true,
     track: "Vlog Setup — @zuri.k",
     views: 37500,
@@ -1242,10 +1251,8 @@ export const SEED_POSTS: Post[] = [
     time: "10h ago",
     caption: "Forest downhill skate session with the whole crew ⚡🛹",
     tag: "#Skateboarding #ExtremeSports",
-    video:
-      "https://cdn.coverr.co/videos/coverr-friends-skateboarding-on-the-road-in-a-forest-8641/720p.mp4",
-    media:
-      "https://cdn.coverr.co/videos/coverr-friends-skateboarding-on-the-road-in-a-forest-8641/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     mediaIsVideo: true,
     track: "Lush Life — Zara Larsson",
     soundUrl: TRENDING_SOUNDS[10]!.url,
@@ -1263,8 +1270,8 @@ export const SEED_POSTS: Post[] = [
     time: "11h ago",
     caption: "Front-row POV when the whole arena sang the chorus back 😭💛",
     tag: "#LiveMusic #ConcertPOV",
-    video: "https://cdn.coverr.co/videos/coverr-pov-crowd-at-a-concert-4932/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-pov-crowd-at-a-concert-4932/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     mediaIsVideo: true,
     track: "International Love — Pitbull & Chris Brown",
     soundUrl: TRENDING_SOUNDS[11]!.url,
@@ -1282,8 +1289,8 @@ export const SEED_POSTS: Post[] = [
     time: "12h ago",
     caption: "Piggyback sprint gone hilariously wrong in 3... 2... 1 😂",
     tag: "#Funny #Fails #Friends",
-    video: "https://cdn.coverr.co/videos/coverr-woman-jumps-on-man-s-back-2006/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-woman-jumps-on-man-s-back-2006/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
     mediaIsVideo: true,
     track: "Original Comedy — @hahahub",
     views: 69100,
@@ -1300,8 +1307,8 @@ export const SEED_POSTS: Post[] = [
     time: "13h ago",
     caption: "Weekend vintage market thrift haul — found three crazy pieces under $25 🛍️✨",
     tag: "#ThriftHaul #FashionVlog",
-    video: "https://cdn.coverr.co/videos/coverr-fashion-hunt-at-outdoor-market/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-fashion-hunt-at-outdoor-market/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     mediaIsVideo: true,
     track: "Snooze — SZA",
     soundUrl: TRENDING_SOUNDS[3]!.url,
@@ -1319,8 +1326,10 @@ export const SEED_POSTS: Post[] = [
     time: "14h ago",
     caption: "Zero-equipment outdoor core & abs circuit — save this for tomorrow 💪🔥",
     tag: "#Fitness #WorkoutVlog #Sports",
-    video: "https://cdn.coverr.co/videos/coverr-focused-outdoor-ab-workout/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-focused-outdoor-ab-workout/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
     mediaIsVideo: true,
     track: "Workout Energy — @dre.moves",
     views: 42300,
@@ -1337,8 +1346,10 @@ export const SEED_POSTS: Post[] = [
     time: "15h ago",
     caption: "Sunday comfort dinner from scratch — smell through the screen 🍲🧄",
     tag: "#Cooking #FoodieBlog",
-    video: "https://cdn.coverr.co/videos/coverr-woman-cooking-in-the-kitchen-3837/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-woman-cooking-in-the-kitchen-3837/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
     mediaIsVideo: true,
     track: "Kitchen Audio — @jae.studio",
     views: 31800,
@@ -1355,8 +1366,8 @@ export const SEED_POSTS: Post[] = [
     time: "17h ago",
     caption: "When everyone talks at the exact same time on the group video call 😂📞",
     tag: "#GroupChat #Comedy #Relatable",
-    video: "https://cdn.coverr.co/videos/coverr-people-say-hi-on-a-video-call-3316/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-people-say-hi-on-a-video-call-3316/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     mediaIsVideo: true,
     track: "Original Sound — @hahahub",
     views: 58900,
@@ -1373,8 +1384,8 @@ export const SEED_POSTS: Post[] = [
     time: "19h ago",
     caption: "One take in the vocal booth — raw freestyle before mixing 🎙️🔥",
     tag: "#Vocalist #OneTake #Music",
-    video: "https://cdn.coverr.co/videos/coverr-a-guy-singing-into-a-microphone-745/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-a-guy-singing-into-a-microphone-745/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     mediaIsVideo: true,
     track: "Not Like Us — Kendrick Lamar",
     soundUrl: TRENDING_SOUNDS[1]!.url,
@@ -1392,8 +1403,10 @@ export const SEED_POSTS: Post[] = [
     time: "21h ago",
     caption: "Cardio + Amapiano groove check — best way to start the day 💪🎹",
     tag: "#Amapiano #MoveDaily",
-    video: "https://cdn.coverr.co/videos/coverr-dancing-in-activewear-1021/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-dancing-in-activewear-1021/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
     mediaIsVideo: true,
     track: "Tanzania (feat. Sino Msolo) — Uncle Waffles & Tony Duardo",
     soundUrl: TRENDING_SOUNDS[6]!.url,
@@ -1411,8 +1424,10 @@ export const SEED_POSTS: Post[] = [
     time: "23h ago",
     caption: "Subway commute mini-vlog + city people-watching diary 🚇🎧",
     tag: "#CityVlog #DailyBlog",
-    video: "https://cdn.coverr.co/videos/coverr-walking-through-the-subway-9363/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-walking-through-the-subway-9363/720p.mp4",
+    video:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    media:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
     mediaIsVideo: true,
     track: "City Diary — @zuri.k",
     views: 28400,
@@ -1429,8 +1444,8 @@ export const SEED_POSTS: Post[] = [
     time: "1d ago",
     caption: "Evening city run to clear the mind before tomorrow starts 🏃‍♂️🌆",
     tag: "#Running #Fitness #Sports",
-    video: "https://cdn.coverr.co/videos/coverr-urban-running-in-the-evening/720p.mp4",
-    media: "https://cdn.coverr.co/videos/coverr-urban-running-in-the-evening/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     mediaIsVideo: true,
     track: "Night Run — @dre.moves",
     views: 24600,
@@ -1447,10 +1462,8 @@ export const SEED_POSTS: Post[] = [
     time: "1d ago",
     caption: "Car speaker bass test before dropping the weekend mix 🚗🔊",
     tag: "#CarTest #BassDrop",
-    video:
-      "https://cdn.coverr.co/videos/coverr-a-man-selecting-music-to-listen-to-in-the-car-3131/720p.mp4",
-    media:
-      "https://cdn.coverr.co/videos/coverr-a-man-selecting-music-to-listen-to-in-the-car-3131/720p.mp4",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    media: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     mediaIsVideo: true,
     track: "Not Like Us — Kendrick Lamar",
     soundUrl: TRENDING_SOUNDS[1]!.url,
@@ -1631,7 +1644,8 @@ export const LIVE_STREAMS: LiveStreamItem[] = [
     title: "Amapiano Night Groove",
     host: USER_MAP.nala,
     tag: "#Amapiano",
-    videoUrl: "https://cdn.coverr.co/videos/coverr-dj-at-a-party-8079/720p.mp4",
+    videoUrl:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     audioUrl:
       "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/ab/fd/25/abfd2533-3a55-ede0-8564-840ffb3806b4/mzaf_6356538675244338564.plus.aac.p.m4a",
     viewers: 1420,
@@ -1662,8 +1676,7 @@ export const LIVE_STREAMS: LiveStreamItem[] = [
     title: "Late Night Comedy & Storytime",
     host: USER_MAP.haha,
     tag: "#Funny",
-    videoUrl:
-      "https://cdn.coverr.co/videos/coverr-a-couple-having-fun-while-playing-a-board-game-335/720p.mp4",
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     viewers: 980,
     likes: 3190,
     initialChat: [
@@ -1686,7 +1699,8 @@ export const LIVE_STREAMS: LiveStreamItem[] = [
     title: "Coastal Travel & Sunset Vlog",
     host: USER_MAP.zuri,
     tag: "#TravelVlog",
-    videoUrl: "https://cdn.coverr.co/videos/coverr-vlogger-greeting-audience-by-the-sea/720p.mp4",
+    videoUrl:
+      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     viewers: 615,
     likes: 1690,
     initialChat: [

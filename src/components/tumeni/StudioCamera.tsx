@@ -141,7 +141,7 @@ const TEXT_STYLES: { id: VideoOverlay["style"]; label: string }[] = [
   { id: "outline", label: "Shadow" },
 ];
 const FALLBACK_SAMPLE_VIDEO =
-  "https://cdn.coverr.co/videos/coverr-neon-glow-fashion-portrait/720p.mp4";
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4";
 
 function pickRecorderMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
@@ -518,6 +518,8 @@ export function StudioCameraModal({
   useEffect(() => {
     const videoEl = camVideoRef.current;
     if (step === "capture" && camStatus === "live" && videoEl && streamRef.current) {
+      videoEl.muted = true;
+      videoEl.playsInline = true;
       if (videoEl.srcObject !== streamRef.current) {
         videoEl.srcObject = streamRef.current;
       }
@@ -2719,6 +2721,11 @@ export function StudioCameraModal({
           <button
             type="button"
             onClick={() => {
+              streamRef.current?.getTracks().forEach((t) => t.stop());
+              streamRef.current = null;
+              if (camVideoRef.current) {
+                camVideoRef.current.srcObject = null;
+              }
               setFacingMode((m) => {
                 const next = m === "user" ? "environment" : "user";
                 toast(next === "user" ? "Front camera" : "Back camera");

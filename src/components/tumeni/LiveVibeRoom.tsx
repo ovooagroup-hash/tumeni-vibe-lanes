@@ -217,6 +217,8 @@ export function LiveVibeRoomSheet({
   useEffect(() => {
     const videoEl = hostVideoRef.current;
     if (isHostBroadcast && hasHostCam && videoEl && hostStreamRef.current) {
+      videoEl.muted = true;
+      videoEl.playsInline = true;
       if (videoEl.srcObject !== hostStreamRef.current) {
         videoEl.srcObject = hostStreamRef.current;
       }
@@ -846,6 +848,11 @@ export function LiveVibeRoomSheet({
               <button
                 type="button"
                 onClick={() => {
+                  hostStreamRef.current?.getTracks().forEach((t) => t.stop());
+                  hostStreamRef.current = null;
+                  if (hostVideoRef.current) {
+                    hostVideoRef.current.srcObject = null;
+                  }
                   setFacingMode((m) => {
                     const next = m === "user" ? "environment" : "user";
                     toast(next === "user" ? "Front camera" : "Back camera");

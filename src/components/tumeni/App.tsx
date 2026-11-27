@@ -41,7 +41,6 @@ import {
   FEED_CATEGORIES,
   SEED_POSTS,
   SEED_CHATS,
-  PROFILES,
   GRID,
   CREATOR_PROFILES,
   CREWS,
@@ -803,9 +802,14 @@ export function TumeniApp({
   const [studioInitialSound, setStudioInitialSound] = useState<SoundTrack | null>(null);
   const [soundSheetPost, setSoundSheetPost] = useState<Post | null>(null);
   const [viewingCreator, setViewingCreator] = useState<User | null>(null);
-  const [profileIdx, setProfileIdx] = useState(0);
+  const [activeAccountId, setActiveAccountId] = useState(account);
   const [switcher, setSwitcher] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [notif, setNotif] = useState(true);
+
+  useEffect(() => {
+    setActiveAccountId(account);
+  }, [account]);
   const [reelAt, setReelAt] = useState<string | null>(null);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const [requests, setRequests] = useState<SuggestedPerson[]>([]);
@@ -955,9 +959,17 @@ export function TumeniApp({
     handle: setup.handle,
     avatar: setup.avatar,
   };
-  const profiles: User[] = [myUser, ...PROFILES];
-  const profile = profiles[profileIdx] ?? myUser;
-  const isMe = profileIdx === 0;
+  const localAccounts: User[] = accountsList.map((a) => ({
+    id: a.accountId,
+    name: a.profile.name,
+    handle: a.profile.handle,
+    avatar: a.profile.avatar,
+  }));
+  const profiles: User[] = localAccounts.some((p) => p.id === account)
+    ? localAccounts
+    : [myUser, ...localAccounts];
+  const profile = profiles.find((p) => p.id === activeAccountId) ?? myUser;
+  const isMe = profile.id === account;
   const me: User = {
     id: isMe ? account : profile.id,
     name: profile.name,
@@ -1364,7 +1376,7 @@ export function TumeniApp({
                       myHandle={setup.handle}
                       myName={setup.name}
                       onEditLocation={() => {
-                        setProfileIdx(0);
+                        setActiveAccountId(account);
                         setTab("profile");
                       }}
                       onTapIn={handleTapIn}
@@ -1385,7 +1397,7 @@ export function TumeniApp({
                   myHandle={setup.handle}
                   myName={setup.name}
                   onEditLocation={() => {
-                    setProfileIdx(0);
+                    setActiveAccountId(account);
                     setTab("profile");
                   }}
                   onTapIn={handleTapIn}
@@ -1429,7 +1441,7 @@ export function TumeniApp({
               setOpenChat("crew");
             }}
             onOpenMyProfile={() => {
-              setProfileIdx(0);
+              setActiveAccountId(account);
               setTab("profile");
             }}
             myHandle={setup.handle}
@@ -1567,7 +1579,7 @@ export function TumeniApp({
             onOpen={(id) => openReels(id)}
             onCreateDrop={() => setStudioLaunch("camera")}
             onSwitch={() => setSwitcher(true)}
-            onLogout={onLogout}
+            onLogout={() => setShowLogoutConfirm(true)}
           />
         )}
 
@@ -1794,12 +1806,12 @@ export function TumeniApp({
 
       <Sheet open={switcher} onClose={() => setSwitcher(false)} title="Switch profile">
         <div className="space-y-2">
-          {profiles.map((p, i) => (
+          {profiles.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => {
-                setProfileIdx(i);
+                setActiveAccountId(p.id);
                 setSwitcher(false);
                 toast(`Switched to ${p.handle}`);
               }}
@@ -1810,9 +1822,40 @@ export function TumeniApp({
                 <p className="truncate font-medium text-foreground">{p.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{p.handle}</p>
               </div>
-              {i === profileIdx && <Check className="h-5 w-5 text-[#FFB800]" />}
+              {p.id === profile.id && <Check className="h-5 w-5 text-[#FFB800]" />}
             </button>
           ))}
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        title={`Log out of ${me.handle}?`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-zinc-400">
+            You can always log back into your account anytime using your email or phone.
+          </p>
+          <div className="space-y-2.5 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setShowLogoutConfirm(false);
+                onLogout();
+              }}
+              className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-500 active:scale-[0.99]"
+            >
+              Log Out
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLogoutConfirm(false)}
+              className="flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-[#222228] bg-[#1E1E24] px-4 text-sm font-semibold text-foreground transition hover:bg-[#272730] active:scale-[0.99]"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </Sheet>
 

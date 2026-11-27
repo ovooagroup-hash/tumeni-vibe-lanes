@@ -9,7 +9,6 @@ import {
   EyeOff,
   Flame,
   Gamepad2,
-  KeyRound,
   Laugh,
   Loader2,
   Mail,
@@ -34,6 +33,7 @@ import {
   toggleSelection,
   type SetupProfile,
 } from "./onboarding";
+import { getAccountRecord, upsertAccountRecord } from "./storage";
 
 const hasSupabaseConfig = Boolean(
   import.meta.env["VITE_SUPABASE_URL"] && import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"],
@@ -129,13 +129,22 @@ function clearStaleAccountIfMismatch(uid: string) {
   }
 }
 
-function generateSixDigitCode(): string {
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    const arr = new Uint32Array(1);
-    crypto.getRandomValues(arr);
-    return String(100000 + ((arr[0] ?? 0) % 900000));
+function resolveExistingProfile(
+  uid: string,
+  metadata: Record<string, unknown> | undefined,
+): SetupProfile | null {
+  const cloudProfile =
+    metadata?.["tumeni_profile"] && typeof metadata["tumeni_profile"] === "object"
+      ? readSetup(JSON.stringify(metadata["tumeni_profile"]))
+      : null;
+  if (cloudProfile) return cloudProfile;
+  try {
+    const localSaved = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
+    if (localSaved) return localSaved;
+  } catch {
+    /* Ignore storage access errors. */
   }
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return getAccountRecord(uid)?.profile ?? null;
 }
 
 function formatPhoneE164(dial: string, rawLocal: string): string {
@@ -164,18 +173,19 @@ export function Auth({
 }) {
   const [step, setStep] = useState(initialAccount ? 1 : 0);
   const [account, setAccount] = useState(initialAccount ?? "");
-  const [authMethod, setAuthMethod] = useState<"phone" | "email">("phone");
+  const [authMethod, setAuthMethod] = useState<"email" | "phone">("email");
+  const [emailMode, setEmailMode] = useState<"otp" | "password">("otp");
   const [authTab, setAuthTab] = useState<"signin" | "signup">("signin");
 
-  // Phone OTP state
+  // OTP state (Email 6-digit OTP & Phone SMS OTP)
   const [selectedCountry, setSelectedCountry] = useState<CountryOption>(COUNTRIES[0]!);
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
   const [countryQuery, setCountryQuery] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
-  const [fullPhone, setFullPhone] = useState("");
-  const [phoneStage, setPhoneStage] = useState<"input" | "otp">("input");
+  const [otpTarget, setOtpTarget] = useState("");
+  const [otpChannel, setOtpChannel] = useState<"email" | "sms">("email");
+  const [otpStage, setOtpStage] = useState<"input" | "otp">("input");
   const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""]);
-  const [fallbackOtpCode, setFallbackOtpCode] = useState<string | null>(null);
   const [resendSeconds, setResendSeconds] = useState(0);
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const verifyingOtpRef = useRef(false);
@@ -312,10 +322,7 @@ export function Auth({
       const { data } = await supabase.auth.getUser();
       if (data.user) {
         const meta = data.user.user_metadata as Record<string, unknown> | undefined;
-        const existingProfile =
-          meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
-            ? readSetup(JSON.stringify(meta["tumeni_profile"]))
-            : null;
+        const existingProfile = resolveExistingProfile(data.user.id, meta);
         const displayName =
           typeof meta?.["full_name"] === "string"
             ? meta["full_name"]
@@ -324,6 +331,49 @@ export function Auth({
               : null;
         hydrateOrStartOnboarding(data.user.id, data.user.email ?? "", displayName, existingProfile);
       }
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendEmailCode = async (targetEmail?: string) => {
+    const cleanEmail = (targetEmail ?? email).trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setError("Enter a valid email address to receive your 6-digit verification code.");
+      return;
+    }
+
+    setError("");
+    setInfoMsg("");
+    if (!hasSupabaseConfig) {
+      setError("Real email verification requires cloud auth to be configured.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: {
+          shouldCreateUser: true,
+        },
+      });
+      if (otpErr) {
+        setError(formatAuthError(otpErr));
+        return;
+      }
+
+      setOtpChannel("email");
+      setOtpTarget(cleanEmail);
+      setOtpDigits(["", "", "", "", "", ""]);
+      setOtpStage("otp");
+      setResendSeconds(45);
+      setInfoMsg(`We sent a 6-digit code to ${cleanEmail}. Check your inbox.`);
+      window.setTimeout(() => {
+        otpInputRefs.current[0]?.focus();
+      }, 60);
     } catch (err) {
       setError(formatAuthError(err));
     } finally {
@@ -342,65 +392,69 @@ export function Auth({
     setError("");
     setInfoMsg("");
     setCountryPickerOpen(false);
+
+    if (!hasSupabaseConfig) {
+      setError(
+        "SMS delivery requires an active phone provider. Use Real Email Code or Google to sign in instantly.",
+      );
+      return;
+    }
+
     setBusy(true);
-    setFullPhone(e164);
-
-    let useFallback = !hasSupabaseConfig;
-    if (hasSupabaseConfig) {
-      try {
-        const { error: otpErr } = await supabase.auth.signInWithOtp({
-          phone: e164,
-        });
-        if (otpErr) {
-          useFallback = true;
-        }
-      } catch {
-        useFallback = true;
+    try {
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        phone: e164,
+      });
+      if (otpErr) {
+        setError(
+          "SMS delivery requires an active phone provider. Use Real Email Code or Google to sign in instantly.",
+        );
+        return;
       }
-    }
 
-    if (useFallback) {
-      setFallbackOtpCode(generateSixDigitCode());
-    } else {
-      setFallbackOtpCode(null);
+      setOtpChannel("sms");
+      setOtpTarget(e164);
+      setOtpDigits(["", "", "", "", "", ""]);
+      setOtpStage("otp");
+      setResendSeconds(45);
       setInfoMsg(`SMS verification code sent to ${e164}.`);
+      window.setTimeout(() => {
+        otpInputRefs.current[0]?.focus();
+      }, 60);
+    } catch {
+      setError(
+        "SMS delivery requires an active phone provider. Use Real Email Code or Google to sign in instantly.",
+      );
+    } finally {
+      setBusy(false);
     }
-
-    setOtpDigits(["", "", "", "", "", ""]);
-    setPhoneStage("otp");
-    setResendSeconds(45);
-    setBusy(false);
-    window.setTimeout(() => {
-      otpInputRefs.current[0]?.focus();
-    }, 60);
   };
 
   const verifyOtpCode = useCallback(
     async (code: string) => {
-      if (code.length !== 6 || verifyingOtpRef.current) return;
+      if (code.length !== 6 || verifyingOtpRef.current || !otpTarget) return;
+      if (!hasSupabaseConfig) {
+        setError("Verification requires cloud auth to be configured.");
+        return;
+      }
+
       verifyingOtpRef.current = true;
       setError("");
       setBusy(true);
 
       try {
-        if (fallbackOtpCode) {
-          if (code !== fallbackOtpCode) {
-            setError("That code doesn't match. Check the 6 digits and try again.");
-            setOtpDigits(["", "", "", "", "", ""]);
-            window.setTimeout(() => otpInputRefs.current[0]?.focus(), 30);
-            return;
-          }
-          const cleanDigits = fullPhone.replace(/\D/g, "");
-          const uid = `phone_${cleanDigits}`;
-          hydrateOrStartOnboarding(uid, fullPhone, null, null);
-          return;
-        }
-
-        const { data, error: verifyErr } = await supabase.auth.verifyOtp({
-          phone: fullPhone,
-          token: code,
-          type: "sms",
-        });
+        const { data, error: verifyErr } =
+          otpChannel === "email"
+            ? await supabase.auth.verifyOtp({
+                email: otpTarget,
+                token: code,
+                type: "email",
+              })
+            : await supabase.auth.verifyOtp({
+                phone: otpTarget,
+                token: code,
+                type: "sms",
+              });
 
         if (verifyErr) {
           setError(verifyErr.message || "Invalid verification code. Please try again.");
@@ -410,11 +464,14 @@ export function Auth({
         }
 
         if (data.user) {
+          const uid = data.user.id;
           const meta = data.user.user_metadata as Record<string, unknown> | undefined;
-          const existingProfile =
-            meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
-              ? readSetup(JSON.stringify(meta["tumeni_profile"]))
-              : null;
+          const existingProfile = resolveExistingProfile(uid, meta);
+          if (existingProfile) {
+            onLogin(uid, existingProfile);
+            return;
+          }
+
           const displayName =
             typeof meta?.["full_name"] === "string"
               ? meta["full_name"]
@@ -422,10 +479,10 @@ export function Auth({
                 ? meta["name"]
                 : null;
           hydrateOrStartOnboarding(
-            data.user.id,
-            data.user.phone ?? fullPhone,
+            uid,
+            data.user.email ?? data.user.phone ?? otpTarget,
             displayName,
-            existingProfile,
+            null,
           );
         }
       } catch (err) {
@@ -435,54 +492,47 @@ export function Auth({
         setBusy(false);
       }
     },
-    [fallbackOtpCode, fullPhone, hydrateOrStartOnboarding],
+    [hydrateOrStartOnboarding, onLogin, otpChannel, otpTarget],
   );
 
   const handleOtpDigitChange = (idx: number, raw: string) => {
     const cleaned = raw.replace(/\D/g, "");
     if (!cleaned) {
-      setOtpDigits((prev) => {
-        const nextArr = [...prev];
-        nextArr[idx] = "";
-        return nextArr;
-      });
+      const nextArr = [...otpDigits];
+      nextArr[idx] = "";
+      setOtpDigits(nextArr);
       return;
     }
 
     const chars = cleaned.slice(0, 6 - idx).split("");
-    setOtpDigits((prev) => {
-      const nextArr = [...prev];
-      chars.forEach((ch, offset) => {
-        if (idx + offset < 6) {
-          nextArr[idx + offset] = ch;
-        }
-      });
-      const joined = nextArr.join("");
-      if (joined.length === 6 && !nextArr.includes("")) {
-        void verifyOtpCode(joined);
+    const nextArr = [...otpDigits];
+    chars.forEach((ch, offset) => {
+      if (idx + offset < 6) {
+        nextArr[idx + offset] = ch;
       }
-      return nextArr;
     });
+    setOtpDigits(nextArr);
 
     const nextFocus = Math.min(5, idx + chars.length);
     otpInputRefs.current[nextFocus]?.focus();
+
+    const joined = nextArr.join("");
+    if (joined.length === 6 && !nextArr.includes("")) {
+      void verifyOtpCode(joined);
+    }
   };
 
   const handleOtpKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace") {
       if (otpDigits[idx]) {
-        setOtpDigits((prev) => {
-          const nextArr = [...prev];
-          nextArr[idx] = "";
-          return nextArr;
-        });
+        const nextArr = [...otpDigits];
+        nextArr[idx] = "";
+        setOtpDigits(nextArr);
       } else if (idx > 0) {
         otpInputRefs.current[idx - 1]?.focus();
-        setOtpDigits((prev) => {
-          const nextArr = [...prev];
-          nextArr[idx - 1] = "";
-          return nextArr;
-        });
+        const nextArr = [...otpDigits];
+        nextArr[idx - 1] = "";
+        setOtpDigits(nextArr);
       }
     } else if (e.key === "ArrowLeft" && idx > 0) {
       otpInputRefs.current[idx - 1]?.focus();
@@ -507,23 +557,15 @@ export function Auth({
     }
   };
 
-  const handleAutofillFallbackOtp = () => {
-    if (!fallbackOtpCode) return;
-    const digits = fallbackOtpCode.slice(0, 6).split("");
-    setOtpDigits(digits);
-    otpInputRefs.current[5]?.focus();
-    void verifyOtpCode(fallbackOtpCode);
-  };
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleEmailPasswordAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !password) return;
 
     setError("");
     setInfoMsg("");
     if (!hasSupabaseConfig) {
-      setError("Email authentication is not configured here yet. Try Phone Number sign-in.");
+      setError("Email authentication is not configured here yet.");
       return;
     }
     setBusy(true);
@@ -540,10 +582,7 @@ export function Auth({
         }
         if (data.user) {
           const meta = data.user.user_metadata as Record<string, unknown> | undefined;
-          const existingProfile =
-            meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
-              ? readSetup(JSON.stringify(meta["tumeni_profile"]))
-              : null;
+          const existingProfile = resolveExistingProfile(data.user.id, meta);
           const displayName =
             typeof meta?.["full_name"] === "string"
               ? meta["full_name"]
@@ -571,10 +610,7 @@ export function Auth({
         }
         if (data.session && data.user) {
           const meta = data.user.user_metadata as Record<string, unknown> | undefined;
-          const existingProfile =
-            meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
-              ? readSetup(JSON.stringify(meta["tumeni_profile"]))
-              : null;
+          const existingProfile = resolveExistingProfile(data.user.id, meta);
           hydrateOrStartOnboarding(
             data.user.id,
             data.user.email ?? cleanEmail,
@@ -594,7 +630,7 @@ export function Auth({
   };
 
   const handleResetPassword = async () => {
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       setError("Enter your email address above first so we can send a reset link.");
       return;
@@ -649,6 +685,13 @@ export function Auth({
           return;
         }
       }
+      try {
+        localStorage.setItem(`tumeni-setup:${account}`, JSON.stringify(finalProfile));
+        localStorage.setItem("tumeni-account", account);
+      } catch {
+        /* Browser storage optional when cloud metadata succeeds. */
+      }
+      upsertAccountRecord(account, finalProfile);
       onLogin(account, finalProfile);
     } catch (err) {
       setError(
@@ -668,7 +711,7 @@ export function Auth({
     "min-h-[48px] w-full rounded-xl border border-[#2A2A32] bg-[#0A0A0C] px-4 text-base text-foreground outline-none transition duration-150 focus:border-[#FFB800] focus:ring-1 focus:ring-[#FFB800] placeholder:text-zinc-500";
 
   const initial = (profile.name.trim() || profile.handle.trim() || "T").charAt(0).toUpperCase();
-  const isOtpScreen = step === 0 && authMethod === "phone" && phoneStage === "otp";
+  const isOtpScreen = step === 0 && otpStage === "otp";
 
   return (
     <div className="relative flex min-h-dvh flex-col overflow-x-clip bg-[#0A0A0C] text-foreground">
@@ -737,7 +780,7 @@ export function Auth({
                 </ol>
               )}
 
-              <div className="animate-rise" key={`${step}-${phoneStage}`}>
+              <div className="animate-rise" key={`${step}-${otpStage}-${authMethod}`}>
                 {step === 0 && !isOtpScreen && (
                   <div className="mb-6 text-center">
                     <div className="mx-auto mb-3 inline-flex items-center gap-2">
@@ -759,19 +802,20 @@ export function Auth({
                       Enter 6-digit code
                     </h1>
                     <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-400">
-                      <span>Sent via SMS to {fullPhone}</span>
+                      <span>
+                        Sent via {otpChannel === "email" ? "email" : "SMS"} to {otpTarget}
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
-                          setPhoneStage("input");
+                          setOtpStage("input");
                           setOtpDigits(["", "", "", "", "", ""]);
-                          setFallbackOtpCode(null);
                           setError("");
                           setInfoMsg("");
                         }}
                         className="min-h-[36px] font-semibold text-[#FFB800] hover:underline"
                       >
-                        Edit number
+                        {otpChannel === "email" ? "Edit email" : "Edit number"}
                       </button>
                     </div>
                   </div>
@@ -809,6 +853,25 @@ export function Auth({
                       <button
                         type="button"
                         role="tab"
+                        aria-selected={authMethod === "email"}
+                        onClick={() => {
+                          setAuthMethod("email");
+                          setCountryPickerOpen(false);
+                          setError("");
+                          setInfoMsg("");
+                        }}
+                        className={`flex min-h-[44px] items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-medium transition ${
+                          authMethod === "email"
+                            ? "bg-[#FFB800] font-semibold text-[#0A0A0C]"
+                            : "text-zinc-400 hover:text-white"
+                        }`}
+                      >
+                        <Mail className="h-4 w-4 shrink-0" />
+                        <span>Email Code</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
                         aria-selected={authMethod === "phone"}
                         onClick={() => {
                           setAuthMethod("phone");
@@ -824,26 +887,224 @@ export function Auth({
                         <Smartphone className="h-4 w-4 shrink-0" />
                         <span>Phone Number</span>
                       </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={authMethod === "email"}
-                        onClick={() => {
-                          setAuthMethod("email");
-                          setCountryPickerOpen(false);
-                          setError("");
-                          setInfoMsg("");
-                        }}
-                        className={`flex min-h-[44px] items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-medium transition ${
-                          authMethod === "email"
-                            ? "bg-[#FFB800] font-semibold text-[#0A0A0C]"
-                            : "text-zinc-400 hover:text-white"
-                        }`}
-                      >
-                        <Mail className="h-4 w-4 shrink-0" />
-                        <span>Email / Password</span>
-                      </button>
                     </div>
+
+                    {authMethod === "email" && (
+                      <>
+                        {emailMode === "otp" ? (
+                          <form
+                            className="space-y-4"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void sendEmailCode();
+                            }}
+                          >
+                            <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                              <span>Email address</span>
+                              <input
+                                className={field}
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                type="email"
+                                inputMode="email"
+                                autoComplete="email"
+                                placeholder="you@example.com"
+                                required
+                              />
+                            </label>
+
+                            {error && (
+                              <div
+                                role="alert"
+                                className="rounded-xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs leading-relaxed text-red-300"
+                              >
+                                {error}
+                              </div>
+                            )}
+                            {infoMsg && (
+                              <p
+                                role="status"
+                                className="rounded-xl border border-[#FFB800]/30 bg-[#FFB800]/10 p-3.5 text-xs leading-relaxed text-[#FFB800]"
+                              >
+                                {infoMsg}
+                              </p>
+                            )}
+
+                            <Button
+                              type="submit"
+                              disabled={busy || !email.trim()}
+                              className="min-h-[48px] w-full rounded-xl bg-[#FFB800] text-sm font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                            >
+                              {busy ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <>
+                                  <span>Send Verification Code</span>
+                                  <ArrowRight />
+                                </>
+                              )}
+                            </Button>
+
+                            <div className="text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEmailMode("password");
+                                  setError("");
+                                  setInfoMsg("");
+                                }}
+                                className="min-h-[44px] text-xs font-medium text-zinc-400 transition hover:text-[#FFB800]"
+                              >
+                                Use email &amp; password instead
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <div
+                              className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-[#26262E] bg-[#0A0A0C] p-1"
+                              role="tablist"
+                              aria-label="Email mode"
+                            >
+                              {(
+                                [
+                                  { id: "signin", label: "Sign In" },
+                                  { id: "signup", label: "Create Account" },
+                                ] as const
+                              ).map((t) => (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={authTab === t.id}
+                                  onClick={() => {
+                                    setAuthTab(t.id);
+                                    setError("");
+                                    setInfoMsg("");
+                                  }}
+                                  className={`min-h-[40px] whitespace-nowrap rounded-lg text-xs font-medium transition ${
+                                    authTab === t.id
+                                      ? "bg-[#222228] font-semibold text-white"
+                                      : "text-zinc-400 hover:text-white"
+                                  }`}
+                                >
+                                  {t.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            <form
+                              className="space-y-4"
+                              onSubmit={(e) => void handleEmailPasswordAuth(e)}
+                            >
+                              <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                                <span>Email address</span>
+                                <input
+                                  className={field}
+                                  value={email}
+                                  onChange={(e) => setEmail(e.target.value)}
+                                  type="email"
+                                  inputMode="email"
+                                  autoComplete="email"
+                                  placeholder="you@example.com"
+                                  required
+                                />
+                              </label>
+                              <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span>Password</span>
+                                  {authTab === "signin" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleResetPassword()}
+                                      className="min-h-[32px] text-xs font-medium text-[#FFB800] hover:underline"
+                                    >
+                                      Forgot password?
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="relative">
+                                  <input
+                                    className={`${field} pr-12`}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    type={showPassword ? "text" : "password"}
+                                    autoComplete={
+                                      authTab === "signin" ? "current-password" : "new-password"
+                                    }
+                                    placeholder={
+                                      authTab === "signin"
+                                        ? "Enter your password"
+                                        : "At least 6 characters"
+                                    }
+                                    minLength={6}
+                                    required
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    aria-label={showPassword ? "Hide password" : "Show password"}
+                                    className="absolute right-1.5 top-1 h-10 w-10 text-zinc-400 hover:text-white"
+                                  >
+                                    {showPassword ? <EyeOff /> : <Eye />}
+                                  </Button>
+                                </div>
+                              </label>
+
+                              {error && (
+                                <div
+                                  role="alert"
+                                  className="rounded-xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs leading-relaxed text-red-300"
+                                >
+                                  {error}
+                                </div>
+                              )}
+                              {infoMsg && (
+                                <p
+                                  role="status"
+                                  className="rounded-xl border border-[#FFB800]/30 bg-[#FFB800]/10 p-3.5 text-xs leading-relaxed text-[#FFB800]"
+                                >
+                                  {infoMsg}
+                                </p>
+                              )}
+
+                              <Button
+                                type="submit"
+                                disabled={busy || !email.trim() || !password}
+                                className="min-h-[48px] w-full rounded-xl bg-[#FFB800] text-sm font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
+                              >
+                                {busy ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <span>
+                                      {authTab === "signin" ? "Sign In" : "Create Account"}
+                                    </span>
+                                    <ArrowRight />
+                                  </>
+                                )}
+                              </Button>
+
+                              <div className="text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEmailMode("otp");
+                                    setError("");
+                                    setInfoMsg("");
+                                  }}
+                                  className="min-h-[44px] text-xs font-medium text-[#FFB800] hover:underline"
+                                >
+                                  Sign in with a 6-digit email code instead
+                                </button>
+                              </div>
+                            </form>
+                          </>
+                        )}
+                      </>
+                    )}
 
                     {authMethod === "phone" && (
                       <form
@@ -951,138 +1212,12 @@ export function Auth({
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              <span>Send 6-Digit Code</span>
+                              <span>Send Verification Code</span>
                               <ArrowRight />
                             </>
                           )}
                         </Button>
                       </form>
-                    )}
-
-                    {authMethod === "email" && (
-                      <>
-                        <div
-                          className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-[#26262E] bg-[#0A0A0C] p-1"
-                          role="tablist"
-                          aria-label="Email mode"
-                        >
-                          {(
-                            [
-                              { id: "signin", label: "Sign In" },
-                              { id: "signup", label: "Create Account" },
-                            ] as const
-                          ).map((t) => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              role="tab"
-                              aria-selected={authTab === t.id}
-                              onClick={() => {
-                                setAuthTab(t.id);
-                                setError("");
-                                setInfoMsg("");
-                              }}
-                              className={`min-h-[40px] whitespace-nowrap rounded-lg text-xs font-medium transition ${
-                                authTab === t.id
-                                  ? "bg-[#222228] font-semibold text-white"
-                                  : "text-zinc-400 hover:text-white"
-                              }`}
-                            >
-                              {t.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        <form className="space-y-4" onSubmit={(e) => void handleEmailAuth(e)}>
-                          <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
-                            <span>Email address</span>
-                            <input
-                              className={field}
-                              value={email}
-                              onChange={(e) => setEmail(e.target.value)}
-                              type="email"
-                              inputMode="email"
-                              autoComplete="email"
-                              placeholder="you@example.com"
-                              required
-                            />
-                          </label>
-                          <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
-                            <div className="flex items-center justify-between gap-2">
-                              <span>Password</span>
-                              {authTab === "signin" && (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleResetPassword()}
-                                  className="min-h-[32px] text-xs font-medium text-[#FFB800] hover:underline"
-                                >
-                                  Forgot password?
-                                </button>
-                              )}
-                            </div>
-                            <div className="relative">
-                              <input
-                                className={`${field} pr-12`}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                type={showPassword ? "text" : "password"}
-                                autoComplete={
-                                  authTab === "signin" ? "current-password" : "new-password"
-                                }
-                                placeholder={
-                                  authTab === "signin"
-                                    ? "Enter your password"
-                                    : "At least 6 characters"
-                                }
-                                minLength={6}
-                                required
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setShowPassword(!showPassword)}
-                                aria-label={showPassword ? "Hide password" : "Show password"}
-                                className="absolute right-1.5 top-1 h-10 w-10 text-zinc-400 hover:text-white"
-                              >
-                                {showPassword ? <EyeOff /> : <Eye />}
-                              </Button>
-                            </div>
-                          </label>
-
-                          {error && (
-                            <div
-                              role="alert"
-                              className="rounded-xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs leading-relaxed text-red-300"
-                            >
-                              {error}
-                            </div>
-                          )}
-                          {infoMsg && (
-                            <p
-                              role="status"
-                              className="rounded-xl border border-[#FFB800]/30 bg-[#FFB800]/10 p-3.5 text-xs leading-relaxed text-[#FFB800]"
-                            >
-                              {infoMsg}
-                            </p>
-                          )}
-
-                          <Button
-                            type="submit"
-                            disabled={busy || !email.trim() || !password}
-                            className="min-h-[48px] w-full rounded-xl bg-[#FFB800] text-sm font-semibold text-[#0A0A0C] hover:bg-[#FFB800]/90"
-                          >
-                            {busy ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <>
-                                <span>{authTab === "signin" ? "Sign In" : "Create Account"}</span>
-                                <ArrowRight />
-                              </>
-                            )}
-                          </Button>
-                        </form>
-                      </>
                     )}
 
                     <div className="my-5 flex items-center gap-3 text-xs font-medium text-zinc-500">
@@ -1119,27 +1254,6 @@ export function Auth({
 
                 {isOtpScreen && (
                   <div className="space-y-5">
-                    {fallbackOtpCode && (
-                      <button
-                        type="button"
-                        onClick={handleAutofillFallbackOtp}
-                        className="flex min-h-[48px] w-full items-center justify-between gap-3 rounded-2xl border border-[#FFB800]/40 bg-[#FFB800]/10 px-4 py-3 text-left transition hover:bg-[#FFB800]/15"
-                      >
-                        <span className="flex items-center gap-2.5 text-xs font-medium text-[#FFB800]">
-                          <KeyRound className="h-4 w-4 shrink-0" />
-                          <span>
-                            Tumeni Verification Code:{" "}
-                            <strong className="font-mono text-sm tracking-wider text-white">
-                              {fallbackOtpCode}
-                            </strong>
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-xs font-semibold text-[#FFB800]">
-                          Tap to autofill
-                        </span>
-                      </button>
-                    )}
-
                     <div
                       className="grid grid-cols-6 gap-2 sm:gap-3"
                       role="group"
@@ -1193,7 +1307,11 @@ export function Auth({
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => void sendPhoneCode(fullPhone)}
+                          onClick={() =>
+                            void (otpChannel === "email"
+                              ? sendEmailCode(otpTarget)
+                              : sendPhoneCode(otpTarget))
+                          }
                           className="min-h-[44px] font-semibold text-[#FFB800] hover:underline"
                         >
                           Resend code
@@ -1521,7 +1639,7 @@ export function Auth({
                           /* Continue logout. */
                         }
                         setAccount("");
-                        setPhoneStage("input");
+                        setOtpStage("input");
                       }
                       setStep((s) => s - 1);
                     }}
