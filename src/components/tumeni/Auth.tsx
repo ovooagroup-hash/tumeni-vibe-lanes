@@ -66,9 +66,50 @@ declare global {
   }
 }
 
-const hasSupabaseConfig = Boolean(
-  import.meta.env["VITE_SUPABASE_URL"] && import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"],
-);
+const SUPABASE_URL = String(import.meta.env["VITE_SUPABASE_URL"] ?? "").replace(/\/+$/, "");
+const SUPABASE_KEY = String(import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"] ?? "");
+const hasSupabaseConfig = Boolean(SUPABASE_URL && SUPABASE_KEY);
+
+function isKnownLovableHost(hostname: string): boolean {
+  return /(^|\.)(lovableproject\.com|lovableproject-dev\.com|lovable\.app|lovable\.cloud|lovable\.dev|gpt-eng\.com|gptengineer\.run|gptengineer\.app)$/i.test(
+    hostname,
+  );
+}
+
+async function isLovableBrokerAvailable(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (isKnownLovableHost(window.location.hostname)) return true;
+  if (/(^|\.)run\.app$|^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
+    return false;
+  }
+  try {
+    const res = await fetch("/~oauth/initiate?provider=google&probe=1", {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(1500),
+    });
+    if (res.headers.get("x-tumeni-oauth-fallback") === "1") return false;
+    if (res.type === "opaqueredirect") return true;
+    return res.status >= 300 && res.status < 400;
+  } catch {
+    return false;
+  }
+}
+
+async function isSupabaseGoogleProviderEnabled(): Promise<boolean> {
+  if (!hasSupabaseConfig) return false;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
+      headers: { apikey: SUPABASE_KEY },
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { external?: { google?: boolean } };
+    return data?.external?.google === true;
+  } catch {
+    return false;
+  }
+}
 
 const G = () => (
   <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0" aria-hidden="true">
@@ -142,10 +183,13 @@ function formatAuthError(err: unknown): string {
       return "Your browser blocked the Google popup. Use Open in Full Tab below or sign in with Email & Password.";
     case "auth/too-many-requests":
       return "Too many attempts right now. Wait a minute and try again.";
-    default:
-      return err instanceof Error && err.message
-        ? err.message
-        : "Authentication failed. Please try again.";
+    default: {
+      const msg = err instanceof Error && err.message ? err.message : "";
+      if (/unsupported provider|missing oauth/i.test(msg)) {
+        return "Google sign-in is not configured for this domain yet. Sign in or create an account with Email & Password below.";
+      }
+      return msg || "Authentication failed. Please try again.";
+    }
   }
 }
 
@@ -156,7 +200,7 @@ export function Auth({
   onLogin: (id: string, profile: SetupProfile) => void;
   initialAccount?: string | null;
 }) {
-  const currentUser = !hasSupabaseConfig ? auth.currentUser : null;
+  const currentUser = auth.currentUser;
   const startNeedsVerify = Boolean(currentUser && !currentUser.emailVerified);
   const startAtOnboarding = Boolean(initialAccount && currentUser && currentUser.emailVerified);
 
@@ -199,7 +243,10 @@ export function Auth({
         return;
       }
 
-      if (!hasSupabaseConfig && !uid.startsWith("srv_")) {
+      const isFirebaseUid =
+        Boolean(auth.currentUser && auth.currentUser.uid === uid) || !hasSupabaseConfig;
+
+      if (!uid.startsWith("srv_") && isFirebaseUid) {
         try {
           const cloud = await fetchCloudProfile(uid);
           if (cloud?.profile) {
@@ -214,15 +261,17 @@ export function Auth({
       try {
         const localBackup = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
         if (localBackup) {
-          if (hasSupabaseConfig) {
-            await supabase.auth.updateUser({ data: { tumeni_profile: localBackup } });
-          } else if (uid.startsWith("srv_")) {
+          if (uid.startsWith("srv_")) {
             await fetch("/api/auth/profile", {
               method: "PUT",
               headers: { "content-type": "application/json" },
               credentials: "same-origin",
               body: JSON.stringify({ profile: localBackup }),
             });
+          } else if (auth.currentUser?.uid === uid) {
+            await saveCloudProfile(uid, userEmail, localBackup);
+          } else if (hasSupabaseConfig) {
+            await supabase.auth.updateUser({ data: { tumeni_profile: localBackup } });
           } else {
             await saveCloudProfile(uid, userEmail, localBackup);
           }
@@ -250,15 +299,6 @@ export function Auth({
   );
 
   useEffect(() => {
-    if (hasSupabaseConfig) {
-      if (initialAccount && step === 0) {
-        setAccount(initialAccount);
-        setNeedsVerification(false);
-        setStep(1);
-      }
-      return;
-    }
-
     const fbUser = auth.currentUser;
     if (initialAccount && fbUser && initialAccount === fbUser.uid) {
       setAccount(fbUser.uid);
@@ -275,7 +315,10 @@ export function Auth({
         setNeedsVerification(true);
         setStep(0);
       }
-    } else if (initialAccount && initialAccount.startsWith("srv_") && step === 0) {
+      return;
+    }
+
+    if (initialAccount && step === 0 && (hasSupabaseConfig || initialAccount.startsWith("srv_"))) {
       setAccount(initialAccount);
       setNeedsVerification(false);
       setStep(1);
@@ -300,7 +343,6 @@ export function Auth({
   }, []);
 
   useEffect(() => {
-    if (hasSupabaseConfig) return;
     let active = true;
     void getRedirectResult(auth)
       .then(async (res) => {
@@ -324,12 +366,7 @@ export function Auth({
   }, [hydrateOrStartOnboarding]);
 
   useEffect(() => {
-    if (
-      hasSupabaseConfig ||
-      typeof window === "undefined" ||
-      gisLoadedRef.current ||
-      !firebaseConfig.oAuthClientId
-    ) {
+    if (typeof window === "undefined" || gisLoadedRef.current || !firebaseConfig.oAuthClientId) {
       return;
     }
     gisLoadedRef.current = true;
@@ -406,19 +443,23 @@ export function Auth({
 
     if (hasSupabaseConfig) {
       try {
-        const hostname = typeof window !== "undefined" ? window.location.hostname : "";
-        const isLovableHost =
-          /(^|\.)(lovableproject\.com|lovableproject-dev\.com|lovable\.app|lovable\.dev|gpt-eng\.com|gptengineer\.run)$/i.test(
-            hostname,
-          );
-
-        if (isLovableHost) {
+        const useLovableBroker = await isLovableBrokerAvailable();
+        if (useLovableBroker) {
           const result = await lovable.auth.signInWithOAuth("google", {
             redirect_uri: window.location.origin,
           });
           if (result.redirected) return;
           if (result.error) {
-            setError(result.error.message || "Google sign-in could not complete.");
+            const msg = result.error.message || "Google sign-in could not complete.";
+            if (/popup|blocked|cancelled|timed out|new browser tab|preview mode/i.test(msg)) {
+              setGoogleFallbackHelp(true);
+            }
+            setError(
+              /unsupported provider|missing oauth/i.test(msg)
+                ? "Google sign-in is not configured for this domain yet. Sign in with Email & Password below."
+                : msg,
+            );
+            setBusy(false);
             return;
           }
           const { data } = await supabase.auth.getUser();
@@ -441,22 +482,27 @@ export function Auth({
               existingProfile,
             );
           }
+          setBusy(false);
           return;
         }
 
-        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: { redirectTo: window.location.origin },
-        });
-        if (oauthErr) {
-          setError(oauthErr.message);
+        const supabaseGoogleReady = await isSupabaseGoogleProviderEnabled();
+        if (supabaseGoogleReady) {
+          const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: window.location.origin },
+          });
+          if (oauthErr) {
+            setError(formatAuthError(oauthErr));
+            setBusy(false);
+          }
+          return;
         }
       } catch (err) {
         setError(formatAuthError(err));
-      } finally {
         setBusy(false);
+        return;
       }
-      return;
     }
 
     try {
@@ -725,7 +771,7 @@ export function Auth({
   };
 
   const handleFinishOnboarding = async () => {
-    const uid = (!hasSupabaseConfig ? auth.currentUser?.uid : undefined) || account;
+    const uid = account || auth.currentUser?.uid || "";
     if (!uid) {
       setStep(0);
       setError("Please sign in again to finish creating your profile.");
@@ -745,15 +791,7 @@ export function Auth({
     setBusy(true);
     setError("");
     try {
-      if (hasSupabaseConfig) {
-        const { error: updateErr } = await supabase.auth.updateUser({
-          data: { tumeni_profile: finalProfile },
-        });
-        if (updateErr) {
-          setError(updateErr.message);
-          return;
-        }
-      } else if (uid.startsWith("srv_")) {
+      if (uid.startsWith("srv_")) {
         const res = await fetch("/api/auth/profile", {
           method: "PUT",
           headers: { "content-type": "application/json" },
@@ -765,8 +803,18 @@ export function Auth({
           setError(payload.error || "Could not save your profile right now.");
           return;
         }
-      } else {
+      } else if (auth.currentUser?.uid === uid) {
         await saveCloudProfile(uid, auth.currentUser?.email ?? email, finalProfile);
+      } else if (hasSupabaseConfig) {
+        const { error: updateErr } = await supabase.auth.updateUser({
+          data: { tumeni_profile: finalProfile },
+        });
+        if (updateErr) {
+          setError(updateErr.message);
+          return;
+        }
+      } else {
+        await saveCloudProfile(uid, email, finalProfile);
       }
       onLogin(uid, finalProfile);
     } catch (err) {
@@ -1426,10 +1474,12 @@ export function Auth({
                       if (step === 1) {
                         if (hasSupabaseConfig) {
                           void supabase.auth.signOut().catch(() => {});
-                        } else if (auth.currentUser) {
+                        }
+                        if (auth.currentUser) {
                           void signOut(auth).catch(() => {});
                           setNeedsVerification(false);
-                        } else if (account.startsWith("srv_")) {
+                        }
+                        if (account.startsWith("srv_")) {
                           void fetch("/api/auth/logout", {
                             method: "POST",
                             credentials: "same-origin",

@@ -916,9 +916,19 @@ export default {
     try {
       const url = new URL(request.url);
       if (url.pathname.startsWith("/~oauth/") || url.pathname === "/auth/callback") {
+        if (url.searchParams.get("probe") === "1") {
+          return new Response(null, {
+            status: 204,
+            headers: {
+              "x-tumeni-oauth-fallback": "1",
+              "cache-control": "no-store",
+            },
+          });
+        }
         return new Response(null, {
           status: 302,
           headers: {
+            "x-tumeni-oauth-fallback": "1",
             location: "/?oauth_notice=1",
             "cache-control": "no-store",
           },
