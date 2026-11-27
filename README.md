@@ -1,6 +1,6 @@
-# Tumeni Vibe Lanes
+# Tumeni
 
-Build a complete, interactive Progressive Web App (PWA) for "tumeni." using the attached UI mockup screenshots as your strict visual and design reference.
+Build a complete, interactive Progressive Web App (PWA) for "Tumeni" using the attached UI mockup screenshots as your strict visual and design reference.
 
 1. VISUAL & DESIGN MATCHING (CRITICAL):
 
@@ -11,7 +11,7 @@ Build a complete, interactive Progressive Web App (PWA) for "tumeni." using the 
 2. UPGRADE FROM "MUSIC-ONLY" TO FULL MIXED-MEDIA SOCIAL APP:
 
 - While copying the visual design of the screenshots, make the content versatile like a real modern social app—not just a music player.
-- The 4 Vibe Lanes (`My Circle`, `Music`, `Laughs`, `Mix`) must filter a rich, multi-format feed containing:
+- The 4 Feed Lanes (`My Circle`, `Music`, `Laughs`, `Mix`) must filter a rich, multi-format feed containing:
   - Short vertical video clips (with play icons, view counts, and creator handles).
   - Funny text thoughts and image memes (for the `Laughs` lane).
   - Music & audio snippets (with the glowing gold waveform bar from the screenshot).

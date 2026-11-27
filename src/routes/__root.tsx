@@ -15,6 +15,23 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const p = window.location.pathname;
+    if (
+      p.startsWith("/~oauth") ||
+      p.startsWith("/__/auth") ||
+      p.startsWith("/auth") ||
+      p.startsWith("/login") ||
+      p.startsWith("/signin") ||
+      p.startsWith("/signup")
+    ) {
+      void router.navigate({ to: "/", replace: true });
+    }
+  }, [router]);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
@@ -82,12 +99,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "tumeni." },
-      { name: "description", content: "tumeni. — your circle, your vibe." },
+      { title: "Tumeni" },
+      {
+        name: "description",
+        content: "Tumeni — share videos, music, comedy & connect with your circle.",
+      },
       { name: "theme-color", content: "#0A0A0C" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "tumeni." },
-      { property: "og:description", content: "tumeni. — your circle, your vibe." },
+      { name: "author", content: "Tumeni" },
+      { property: "og:title", content: "Tumeni" },
+      {
+        property: "og:description",
+        content: "Tumeni — share videos, music, comedy & connect with your circle.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],

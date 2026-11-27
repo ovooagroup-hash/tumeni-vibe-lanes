@@ -2515,7 +2515,7 @@ function EditProfile({
         </label>
         <div className="mt-3 space-y-2">
           <label className="block text-xs text-muted-foreground">
-            City / Vibe Zone
+            City / Location
             <div className="mt-1 flex items-center gap-2 rounded-xl border border-[#222228] bg-[#0A0A0C] px-3 focus-within:border-[#FFB800]">
               <MapPin className="h-4 w-4 shrink-0 text-[#FFB800]" />
               <input

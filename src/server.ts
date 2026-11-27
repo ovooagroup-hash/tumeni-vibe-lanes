@@ -915,6 +915,15 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const url = new URL(request.url);
+      if (url.pathname.startsWith("/~oauth/") || url.pathname === "/auth/callback") {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: "/?oauth_notice=1",
+            "cache-control": "no-store",
+          },
+        });
+      }
       if (url.pathname.startsWith("/api/auth/")) {
         return await handleAuthRoutes(request, url);
       }

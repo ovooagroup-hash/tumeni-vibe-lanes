@@ -16,15 +16,15 @@ const hasSupabaseConfig = Boolean(
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "tumeni. — Find Your Circle" },
+      { title: "Tumeni — Find Your Circle" },
       {
         name: "description",
-        content: "Share videos, music snippets, memes and thoughts with your circle on tumeni.",
+        content: "Share videos, music snippets, memes and thoughts with your circle on Tumeni.",
       },
-      { property: "og:title", content: "tumeni. — Find Your Circle" },
+      { property: "og:title", content: "Tumeni — Find Your Circle" },
       {
         property: "og:description",
-        content: "Share videos, music snippets, memes and thoughts with your circle on tumeni.",
+        content: "Share videos, music snippets, memes and thoughts with your circle on Tumeni.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

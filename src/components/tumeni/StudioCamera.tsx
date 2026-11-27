@@ -1642,7 +1642,7 @@ export function StudioCameraModal({
           </div>
 
           <div className="mt-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Feeling / Vibe</p>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Feeling / Mood</p>
             <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
               {FEELING_MOODS.map((m) => {
                 const val = `${m.emoji} ${m.label}`;
@@ -2267,7 +2267,7 @@ export function StudioCameraModal({
                 <input
                   value={hashtag}
                   onChange={(e) => setHashtag(e.target.value)}
-                  placeholder="Add hashtags (#tumeni #vibe)"
+                  placeholder="Add hashtags (#tumeni #fyp)"
                   className="min-h-[40px] w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
                 />
               </label>

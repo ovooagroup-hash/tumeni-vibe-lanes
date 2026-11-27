@@ -91,7 +91,7 @@ const G = () => (
   </svg>
 );
 
-const steps = ["Welcome", "Profile", "Vibes", "Circle"];
+const steps = ["Welcome", "Profile", "Interests", "Circle"];
 const icons = [Laugh, Flame, Music, Camera, Gamepad2, Trophy];
 const empty: SetupProfile = {
   name: "",
@@ -283,6 +283,23 @@ export function Auth({
   }, [initialAccount, step, needsVerification]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("oauth_notice") === "1") {
+      setInfoMsg(
+        "Google sign-in isn't enabled on this preview host yet. Sign in with Email & Password below.",
+      );
+      params.delete("oauth_notice");
+      const nextSearch = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
     if (hasSupabaseConfig) return;
     let active = true;
     void getRedirectResult(auth)
@@ -389,33 +406,50 @@ export function Auth({
 
     if (hasSupabaseConfig) {
       try {
-        const result = await lovable.auth.signInWithOAuth("google", {
-          redirect_uri: window.location.origin,
-        });
-        if (result.redirected) return;
-        if (result.error) {
-          setError(result.error.message || "Google sign-in could not complete.");
+        const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+        const isLovableHost =
+          /(^|\.)(lovableproject\.com|lovableproject-dev\.com|lovable\.app|lovable\.dev|gpt-eng\.com|gptengineer\.run)$/i.test(
+            hostname,
+          );
+
+        if (isLovableHost) {
+          const result = await lovable.auth.signInWithOAuth("google", {
+            redirect_uri: window.location.origin,
+          });
+          if (result.redirected) return;
+          if (result.error) {
+            setError(result.error.message || "Google sign-in could not complete.");
+            return;
+          }
+          const { data } = await supabase.auth.getUser();
+          if (data.user) {
+            const meta = data.user.user_metadata as Record<string, unknown> | undefined;
+            const existingProfile =
+              meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
+                ? readSetup(JSON.stringify(meta["tumeni_profile"]))
+                : null;
+            const displayName =
+              typeof meta?.["full_name"] === "string"
+                ? meta["full_name"]
+                : typeof meta?.["name"] === "string"
+                  ? meta["name"]
+                  : null;
+            await hydrateOrStartOnboarding(
+              data.user.id,
+              data.user.email ?? "",
+              displayName,
+              existingProfile,
+            );
+          }
           return;
         }
-        const { data } = await supabase.auth.getUser();
-        if (data.user) {
-          const meta = data.user.user_metadata as Record<string, unknown> | undefined;
-          const existingProfile =
-            meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
-              ? readSetup(JSON.stringify(meta["tumeni_profile"]))
-              : null;
-          const displayName =
-            typeof meta?.["full_name"] === "string"
-              ? meta["full_name"]
-              : typeof meta?.["name"] === "string"
-                ? meta["name"]
-                : null;
-          await hydrateOrStartOnboarding(
-            data.user.id,
-            data.user.email ?? "",
-            displayName,
-            existingProfile,
-          );
+
+        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: window.location.origin },
+        });
+        if (oauthErr) {
+          setError(oauthErr.message);
         }
       } catch (err) {
         setError(formatAuthError(err));
@@ -770,7 +804,7 @@ export function Auth({
             <Wordmark className="text-xl sm:text-2xl" />
           </div>
           <p className="truncate text-xs font-medium tracking-wide text-zinc-400">
-            Your circle · Your vibe
+            Social · Audio · Video
           </p>
         </div>
       </header>
@@ -814,7 +848,7 @@ export function Auth({
 
               <div className="animate-rise" key={step}>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#FFB800]">
-                  {step === 0 ? "Welcome to tumeni." : `Step ${step + 1} of 4`}
+                  {step === 0 ? "Welcome to Tumeni" : `Step ${step + 1} of 4`}
                 </p>
                 <h1 className="text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
                   {
@@ -822,10 +856,10 @@ export function Auth({
                       needsVerification
                         ? "Check your inbox."
                         : authTab === "signin"
-                          ? "Sign in to tumeni."
+                          ? "Sign in to Tumeni."
                           : "Create your account.",
                       "Make it yours.",
-                      "What’s your vibe?",
+                      "What are you into?",
                       "Your circle is ready.",
                     ][step]
                   }
@@ -1219,7 +1253,7 @@ export function Auth({
                     <div className="space-y-2">
                       <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
                         <span>
-                          What city / vibe zone are you in?{" "}
+                          What city are you in?{" "}
                           <span className="font-normal text-zinc-400">· for People Near You</span>
                         </span>
                         <div className="relative">
