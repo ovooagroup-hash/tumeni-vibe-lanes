@@ -15,7 +15,6 @@ import {
   MapPin,
   Music,
   Trophy,
-  Volume2,
 } from "lucide-react";
 import {
   browserPopupRedirectResolver,
@@ -31,11 +30,12 @@ import {
   signOut,
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
+import { lovable } from "@/integrations/lovable/index";
+import { supabase } from "@/integrations/supabase/client";
 import { auth, googleProvider } from "@/lib/firebase";
 import { fetchCloudProfile, saveCloudProfile } from "@/lib/tumeni-db";
 import firebaseConfig from "../../../firebase-applet-config.json";
 import { LogoMark, Wordmark } from "./Logo";
-import { avatar } from "./data";
 import {
   INTERESTS,
   POPULAR_CITIES,
@@ -65,6 +65,10 @@ declare global {
     };
   }
 }
+
+const hasSupabaseConfig = Boolean(
+  import.meta.env["VITE_SUPABASE_URL"] && import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"],
+);
 
 const G = () => (
   <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0" aria-hidden="true">
@@ -101,67 +105,6 @@ const empty: SetupProfile = {
   friends: [],
 };
 
-const SHOWCASE_LANES = [
-  {
-    id: "amapiano",
-    label: "Amapiano",
-    creator: "The Groove Plug",
-    handle: "@amapiano_plug",
-    avatar: avatar(14),
-    city: "Johannesburg",
-    caption: "Crowd went crazy when the log drum dropped at Konka yesterday",
-    sound: "Mnike (Slowed + Reverb) — Tyler ICU",
-    likes: "94.6K",
-    drops: "38.2K drops",
-    video:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
-    accentGradient: "from-[#FFB800]/25 via-[#221708] to-[#0A0A0C]",
-  },
-  {
-    id: "laughs",
-    label: "Funny",
-    creator: "Haha Hub",
-    handle: "@hahahub",
-    avatar: avatar(33),
-    city: "London",
-    caption: "Testing the boop the nose challenge on my dog… he was NOT amused",
-    sound: "Original Sound — @hahahub",
-    likes: "14.5K",
-    drops: "136K views",
-    video: "https://cdn.coverr.co/videos/coverr-girl-touches-a-dog-s-nose-3909/720p.mp4",
-    accentGradient: "from-orange-500/20 via-[#1D150E] to-[#0A0A0C]",
-  },
-  {
-    id: "vlog",
-    label: "Vlogs",
-    creator: "Durban Visuals",
-    handle: "@street_heat_sa",
-    avatar: avatar(31),
-    city: "Durban",
-    caption: "Golden hour fit check. Obsidian and amber only.",
-    sound: "Water (Club Mix) — Tyla",
-    likes: "32.1K",
-    drops: "22.4K drops",
-    video:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
-    accentGradient: "from-amber-400/20 via-[#1A1610] to-[#0A0A0C]",
-  },
-  {
-    id: "music",
-    label: "Music",
-    creator: "Nia Rose",
-    handle: "@vocal_luxe",
-    avatar: avatar(44),
-    city: "London",
-    caption: "Late night raw vocals in the booth. No autotune needed.",
-    sound: "Soul Session 04 — Nia Rose",
-    likes: "61.4K",
-    drops: "19.1K drops",
-    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    accentGradient: "from-rose-500/20 via-[#1E1318] to-[#0A0A0C]",
-  },
-] as const;
-
 function sanitizeHandle(raw: string): string {
   const cleaned = raw
     .toLowerCase()
@@ -178,7 +121,10 @@ function getAuthErrorCode(err: unknown): string {
 
 function formatAuthError(err: unknown): string {
   const code = getAuthErrorCode(err);
+  const host = typeof window !== "undefined" ? window.location.hostname : "";
   switch (code) {
+    case "auth/unauthorized-domain":
+      return `Google sign-in via Firebase is waiting for "${host}" to be added to Firebase Console → Authentication → Settings → Authorized domains. You can sign in with Email & Password below right now.`;
     case "auth/invalid-credential":
     case "auth/wrong-password":
     case "auth/user-not-found":
@@ -210,7 +156,7 @@ export function Auth({
   onLogin: (id: string, profile: SetupProfile) => void;
   initialAccount?: string | null;
 }) {
-  const currentUser = auth.currentUser;
+  const currentUser = !hasSupabaseConfig ? auth.currentUser : null;
   const startNeedsVerify = Boolean(currentUser && !currentUser.emailVerified);
   const startAtOnboarding = Boolean(initialAccount && currentUser && currentUser.emailVerified);
 
@@ -222,10 +168,6 @@ export function Auth({
   const [showPassword, setShowPassword] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(startNeedsVerify);
   const [googleFallbackHelp, setGoogleFallbackHelp] = useState(false);
-  const [activePreviewId, setActivePreviewId] = useState<(typeof SHOWCASE_LANES)[number]["id"]>(
-    SHOWCASE_LANES[0].id,
-  );
-  const [previewAvatarBroken, setPreviewAvatarBroken] = useState(false);
   const [infoMsg, setInfoMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [profile, setProfile] = useState<SetupProfile>(() => {
@@ -245,22 +187,19 @@ export function Auth({
   const upload = useRef<HTMLInputElement>(null);
   const gisLoadedRef = useRef(false);
 
-  const activePreview =
-    SHOWCASE_LANES.find((lane) => lane.id === activePreviewId) ?? SHOWCASE_LANES[0];
-
   const hydrateOrStartOnboarding = useCallback(
     async (
       uid: string,
       userEmail: string,
       displayName?: string | null,
-      serverProfile?: SetupProfile | null,
+      existingProfile?: SetupProfile | null,
     ) => {
-      if (serverProfile) {
-        onLogin(uid, serverProfile);
+      if (existingProfile) {
+        onLogin(uid, existingProfile);
         return;
       }
 
-      if (!uid.startsWith("srv_")) {
+      if (!hasSupabaseConfig && !uid.startsWith("srv_")) {
         try {
           const cloud = await fetchCloudProfile(uid);
           if (cloud?.profile) {
@@ -275,7 +214,9 @@ export function Auth({
       try {
         const localBackup = readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
         if (localBackup) {
-          if (uid.startsWith("srv_")) {
+          if (hasSupabaseConfig) {
+            await supabase.auth.updateUser({ data: { tumeni_profile: localBackup } });
+          } else if (uid.startsWith("srv_")) {
             await fetch("/api/auth/profile", {
               method: "PUT",
               headers: { "content-type": "application/json" },
@@ -309,6 +250,15 @@ export function Auth({
   );
 
   useEffect(() => {
+    if (hasSupabaseConfig) {
+      if (initialAccount && step === 0) {
+        setAccount(initialAccount);
+        setNeedsVerification(false);
+        setStep(1);
+      }
+      return;
+    }
+
     const fbUser = auth.currentUser;
     if (initialAccount && fbUser && initialAccount === fbUser.uid) {
       setAccount(fbUser.uid);
@@ -333,6 +283,7 @@ export function Auth({
   }, [initialAccount, step, needsVerification]);
 
   useEffect(() => {
+    if (hasSupabaseConfig) return;
     let active = true;
     void getRedirectResult(auth)
       .then(async (res) => {
@@ -356,7 +307,12 @@ export function Auth({
   }, [hydrateOrStartOnboarding]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || gisLoadedRef.current || !firebaseConfig.oAuthClientId) {
+    if (
+      hasSupabaseConfig ||
+      typeof window === "undefined" ||
+      gisLoadedRef.current ||
+      !firebaseConfig.oAuthClientId
+    ) {
       return;
     }
     gisLoadedRef.current = true;
@@ -430,6 +386,45 @@ export function Auth({
     setInfoMsg("");
     setGoogleFallbackHelp(false);
     setBusy(true);
+
+    if (hasSupabaseConfig) {
+      try {
+        const result = await lovable.auth.signInWithOAuth("google", {
+          redirect_uri: window.location.origin,
+        });
+        if (result.redirected) return;
+        if (result.error) {
+          setError(result.error.message || "Google sign-in could not complete.");
+          return;
+        }
+        const { data } = await supabase.auth.getUser();
+        if (data.user) {
+          const meta = data.user.user_metadata as Record<string, unknown> | undefined;
+          const existingProfile =
+            meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
+              ? readSetup(JSON.stringify(meta["tumeni_profile"]))
+              : null;
+          const displayName =
+            typeof meta?.["full_name"] === "string"
+              ? meta["full_name"]
+              : typeof meta?.["name"] === "string"
+                ? meta["name"]
+                : null;
+          await hydrateOrStartOnboarding(
+            data.user.id,
+            data.user.email ?? "",
+            displayName,
+            existingProfile,
+          );
+        }
+      } catch (err) {
+        setError(formatAuthError(err));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     try {
       const cred = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
       await hydrateOrStartOnboarding(cred.user.uid, cred.user.email ?? "", cred.user.displayName);
@@ -440,6 +435,16 @@ export function Auth({
         code === "auth/cancelled-popup-request" ||
         code === "auth/popup-blocked";
       const isIframe = typeof window !== "undefined" && window.self !== window.top;
+
+      if (code === "auth/unauthorized-domain") {
+        try {
+          window.google?.accounts?.id?.prompt();
+        } catch {
+          /* Fall through to helpful domain guidance. */
+        }
+        setError(formatAuthError(err));
+        return;
+      }
 
       if (isPopupFailure && !isIframe) {
         try {
@@ -511,6 +516,58 @@ export function Auth({
     setInfoMsg("");
     setGoogleFallbackHelp(false);
     setBusy(true);
+
+    if (hasSupabaseConfig) {
+      try {
+        if (authTab === "signin") {
+          const { data, error: signInErr } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+          if (signInErr) {
+            setError(signInErr.message);
+            return;
+          }
+          if (data.user) {
+            const meta = data.user.user_metadata as Record<string, unknown> | undefined;
+            const existingProfile =
+              meta?.["tumeni_profile"] && typeof meta["tumeni_profile"] === "object"
+                ? readSetup(JSON.stringify(meta["tumeni_profile"]))
+                : null;
+            await hydrateOrStartOnboarding(
+              data.user.id,
+              data.user.email ?? cleanEmail,
+              null,
+              existingProfile,
+            );
+          }
+        } else {
+          const { data, error: signUpErr } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password,
+            options: {
+              emailRedirectTo: window.location.origin,
+            },
+          });
+          if (signUpErr) {
+            setError(signUpErr.message);
+            return;
+          }
+          if (data.session && data.user) {
+            await hydrateOrStartOnboarding(data.user.id, data.user.email ?? cleanEmail, null);
+          } else {
+            setInfoMsg(`Check ${cleanEmail} to confirm your account, then sign in.`);
+            setAuthTab("signin");
+          }
+        }
+      } catch (err) {
+        setError(formatAuthError(err));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     try {
       if (authTab === "signin") {
         const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -537,7 +594,8 @@ export function Auth({
         setInfoMsg(`We sent a verification link to ${cleanEmail}.`);
       }
     } catch (err) {
-      if (getAuthErrorCode(err) === "auth/operation-not-allowed") {
+      const code = getAuthErrorCode(err);
+      if (code === "auth/operation-not-allowed" || code === "auth/unauthorized-domain") {
         try {
           await handleServerEmailAuth(cleanEmail);
         } catch {
@@ -560,13 +618,30 @@ export function Auth({
     setError("");
     setInfoMsg("");
     setBusy(true);
+
+    if (hasSupabaseConfig) {
+      try {
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: window.location.origin,
+        });
+        if (resetErr) setError(resetErr.message);
+        else setInfoMsg(`Password reset email sent to ${cleanEmail}.`);
+      } catch (err) {
+        setError(formatAuthError(err));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     try {
       await sendPasswordResetEmail(auth, cleanEmail);
       setInfoMsg(`Password reset email sent to ${cleanEmail}.`);
     } catch (err) {
-      if (getAuthErrorCode(err) === "auth/operation-not-allowed") {
+      const code = getAuthErrorCode(err);
+      if (code === "auth/operation-not-allowed" || code === "auth/unauthorized-domain") {
         setInfoMsg(
-          "Password reset emails activate once Email/Password is toggled on in Firebase Console. Or sign in with Google above.",
+          "Password reset emails activate once Email/Password is enabled for this domain in Firebase Console.",
         );
       } else {
         setError(formatAuthError(err));
@@ -616,7 +691,7 @@ export function Auth({
   };
 
   const handleFinishOnboarding = async () => {
-    const uid = auth.currentUser?.uid || account;
+    const uid = (!hasSupabaseConfig ? auth.currentUser?.uid : undefined) || account;
     if (!uid) {
       setStep(0);
       setError("Please sign in again to finish creating your profile.");
@@ -636,7 +711,15 @@ export function Auth({
     setBusy(true);
     setError("");
     try {
-      if (uid.startsWith("srv_")) {
+      if (hasSupabaseConfig) {
+        const { error: updateErr } = await supabase.auth.updateUser({
+          data: { tumeni_profile: finalProfile },
+        });
+        if (updateErr) {
+          setError(updateErr.message);
+          return;
+        }
+      } else if (uid.startsWith("srv_")) {
         const res = await fetch("/api/auth/profile", {
           method: "PUT",
           headers: { "content-type": "application/json" },
@@ -673,16 +756,15 @@ export function Auth({
   const fullTabHref = typeof window !== "undefined" ? window.location.href : "/";
 
   return (
-    <div className="relative min-h-dvh overflow-x-clip bg-[#0A0A0C] text-foreground">
-      {/* Ambient Obsidian & Gold Spotlight Background */}
+    <div className="relative flex min-h-dvh flex-col overflow-x-clip bg-[#0A0A0C] text-foreground">
+      {/* Subtle Amber Glow Backdrop */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-28 -top-28 h-[420px] w-[420px] rounded-full bg-[#FFB800]/[0.08] blur-[120px]" />
-        <div className="absolute -bottom-32 -right-24 h-[380px] w-[380px] rounded-full bg-[#FFB800]/[0.05] blur-[120px]" />
+        <div className="absolute left-1/2 top-[-120px] h-[360px] w-[520px] -translate-x-1/2 rounded-full bg-[#FFB800]/[0.09] blur-[130px]" />
       </div>
 
-      {/* Minimal Top Bar */}
-      <header className="sticky top-0 z-30 border-b border-[#222228] bg-[#0A0A0C]/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-5 sm:px-8">
+      {/* Minimal Brand Header */}
+      <header className="relative z-10 border-b border-[#222228]/80 bg-[#0A0A0C]/90 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-6 px-5 sm:px-8">
           <div className="flex shrink-0 items-center gap-2.5 whitespace-nowrap">
             <LogoMark className="h-8 w-8 sm:h-9 sm:w-9" />
             <Wordmark className="text-xl sm:text-2xl" />
@@ -693,268 +775,48 @@ export function Auth({
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-12 pt-5 sm:px-8 sm:pt-10">
-        <div
-          className={
-            step === 0
-              ? "grid grid-cols-1 gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-stretch lg:gap-10"
-              : "mx-auto max-w-2xl"
-          }
-        >
-          {/* Desktop Editorial & Live Creator Spotlight Column */}
-          {step === 0 && (
-            <section
-              aria-label="Tumeni creator showcase"
-              className="hidden flex-col justify-between gap-6 py-2 lg:flex"
-            >
-              <div className="space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#FFB800]">
-                  Culture · Sound · Video · Circle
-                </p>
-                <h1 className="max-w-xl text-balance text-4xl font-bold leading-[1.08] tracking-tight text-white xl:text-5xl">
-                  Real drops. <span className="text-[#FFB800]">Real circle.</span> Zero noise.
-                </h1>
-                <p className="max-w-lg text-base leading-relaxed text-zinc-400">
-                  Comedy skits, Amapiano sets, daily vlogs, sports clips, and live rooms — built for
-                  creators and the people actually in their orbit.
-                </p>
-              </div>
-
-              {/* Interactive Vibe Preview Stage */}
-              <div className="space-y-3">
-                <div
-                  className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[#222228] bg-[#141418] p-1"
-                  role="tablist"
-                  aria-label="Preview vibe lane"
-                >
-                  {SHOWCASE_LANES.map((lane) => {
-                    const active = lane.id === activePreview.id;
-                    return (
-                      <button
-                        key={lane.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={active}
-                        onClick={() => {
-                          setActivePreviewId(lane.id);
-                          setPreviewAvatarBroken(false);
-                        }}
-                        className={`min-h-[40px] flex-1 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition duration-150 ${
-                          active ? "bg-[#FFB800] text-[#0A0A0C]" : "text-zinc-400 hover:text-white"
-                        }`}
-                      >
-                        {lane.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="relative min-h-[320px] overflow-hidden rounded-3xl border border-[#222228] bg-[#141418]">
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-br ${activePreview.accentGradient}`}
-                    aria-hidden="true"
-                  />
-                  <video
-                    key={activePreview.video}
-                    src={activePreview.video}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    className="absolute inset-0 h-full w-full object-cover opacity-75 transition-opacity duration-300"
-                  />
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 bg-gradient-to-t from-[#0A0A0C] via-[#0A0A0C]/45 to-transparent"
-                  />
-
-                  <div className="relative flex h-full min-h-[320px] flex-col justify-between p-6">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium text-zinc-200">
-                        {activePreview.label} · {activePreview.city}
-                      </span>
-                      <div className="flex items-end gap-1" aria-hidden="true">
-                        <span className="h-3 w-1 rounded-full bg-[#FFB800] animate-wave" />
-                        <span
-                          className="h-4 w-1 rounded-full bg-[#FFB800] animate-wave"
-                          style={{ animationDelay: "0.18s" }}
-                        />
-                        <span
-                          className="h-2.5 w-1 rounded-full bg-[#FFB800] animate-wave"
-                          style={{ animationDelay: "0.34s" }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        {!previewAvatarBroken ? (
-                          <img
-                            src={activePreview.avatar}
-                            alt={activePreview.creator}
-                            referrerPolicy="no-referrer"
-                            onError={() => setPreviewAvatarBroken(true)}
-                            className="h-11 w-11 shrink-0 rounded-full border border-[#FFB800]/70 object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/70 bg-[#141418] text-sm font-bold text-[#FFB800]">
-                            {activePreview.creator.charAt(0)}
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-white">
-                            {activePreview.creator}
-                          </p>
-                          <p className="truncate text-xs text-zinc-300">
-                            {activePreview.handle} · {activePreview.city}
-                          </p>
-                        </div>
-                      </div>
-
-                      <p className="line-clamp-2 text-base font-medium leading-snug text-white">
-                        {activePreview.caption}
-                      </p>
-
-                      <div className="flex items-center justify-between gap-4 border-t border-white/10 pt-3 text-xs text-zinc-300">
-                        <span className="flex min-w-0 items-center gap-1.5 truncate">
-                          <Volume2 className="h-3.5 w-3.5 shrink-0 text-[#FFB800]" />
-                          <span className="truncate">{activePreview.sound}</span>
-                        </span>
-                        <span className="shrink-0 tabular-nums text-zinc-200">
-                          {activePreview.likes} likes · {activePreview.drops}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
-                <span className="font-medium text-zinc-200">Trending creators</span>
-                <span aria-hidden="true">·</span>
-                <span>@kairo.wav</span>
-                <span aria-hidden="true">·</span>
-                <span>@amapiano_plug</span>
-                <span aria-hidden="true">·</span>
-                <span>@hahahub</span>
-                <span aria-hidden="true">·</span>
-                <span>@vocal_luxe</span>
-              </div>
-            </section>
-          )}
-
-          {/* Mobile Compact Creator Spotlight Strip (Step 0 only) */}
-          {step === 0 && !needsVerification && (
-            <section
-              aria-label="Live vibe preview"
-              className="overflow-hidden rounded-2xl border border-[#222228] bg-[#141418] lg:hidden"
-            >
-              <div className="relative p-4">
-                <div
-                  aria-hidden="true"
-                  className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${activePreview.accentGradient} opacity-80`}
-                />
-                <div className="relative space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      {!previewAvatarBroken ? (
-                        <img
-                          src={activePreview.avatar}
-                          alt={activePreview.creator}
-                          referrerPolicy="no-referrer"
-                          onError={() => setPreviewAvatarBroken(true)}
-                          className="h-9 w-9 shrink-0 rounded-full border border-[#FFB800]/70 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#FFB800]/70 bg-[#0A0A0C] text-xs font-bold text-[#FFB800]">
-                          {activePreview.creator.charAt(0)}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">
-                          {activePreview.creator}{" "}
-                          <span className="font-normal text-zinc-400">· {activePreview.city}</span>
-                        </p>
-                        <p className="truncate text-xs text-zinc-300">{activePreview.caption}</p>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-end gap-0.5" aria-hidden="true">
-                      <span className="h-2.5 w-1 rounded-full bg-[#FFB800] animate-wave" />
-                      <span
-                        className="h-4 w-1 rounded-full bg-[#FFB800] animate-wave"
-                        style={{ animationDelay: "0.2s" }}
-                      />
-                      <span
-                        className="h-3 w-1 rounded-full bg-[#FFB800] animate-wave"
-                        style={{ animationDelay: "0.35s" }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-[#0A0A0C]/70 p-1">
-                    {SHOWCASE_LANES.map((lane) => {
-                      const active = lane.id === activePreview.id;
-                      return (
-                        <button
-                          key={lane.id}
-                          type="button"
-                          onClick={() => {
-                            setActivePreviewId(lane.id);
-                            setPreviewAvatarBroken(false);
-                          }}
-                          className={`min-h-[36px] whitespace-nowrap rounded-lg px-2 text-xs font-semibold transition ${
-                            active ? "bg-[#FFB800] text-[#0A0A0C]" : "text-zinc-400"
-                          }`}
-                        >
-                          {lane.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Primary Auth / Onboarding Card */}
-          <section className="relative flex flex-col justify-between overflow-hidden rounded-3xl border border-[#222228] bg-[#141418]/95 p-5 shadow-2xl shadow-black/60 sm:p-8">
+      <main className="relative z-10 mx-auto flex w-full flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
+        <div className={`w-full ${step < 2 ? "max-w-md" : "max-w-2xl"}`}>
+          <section className="relative overflow-hidden rounded-3xl border border-[#222228] bg-[#141418]/95 p-6 shadow-2xl shadow-black/60 sm:p-8">
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#FFB800]/[0.07] to-transparent"
+              className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#FFB800]/[0.06] to-transparent"
             />
 
             <div className="relative">
-              <ol
-                aria-label="Setup progress"
-                className="mb-7 flex items-start justify-between gap-2"
-              >
-                {steps.map((label, i) => (
-                  <li
-                    key={label}
-                    aria-current={step === i ? "step" : undefined}
-                    className="flex flex-1 flex-col gap-1.5"
-                  >
-                    <span
-                      className={`h-1 rounded-full transition-colors ${
-                        i <= step ? "bg-[#FFB800]" : "bg-[#26262E]"
-                      }`}
-                    />
-                    <span
-                      className={`truncate text-[11px] sm:text-xs ${
-                        i === step ? "font-semibold text-[#FFB800]" : "text-zinc-500"
-                      }`}
+              {step > 0 && (
+                <ol
+                  aria-label="Setup progress"
+                  className="mb-7 flex items-start justify-between gap-2"
+                >
+                  {steps.map((label, i) => (
+                    <li
+                      key={label}
+                      aria-current={step === i ? "step" : undefined}
+                      className="flex flex-1 flex-col gap-1.5"
                     >
-                      {label}
-                    </span>
-                  </li>
-                ))}
-              </ol>
+                      <span
+                        className={`h-1 rounded-full transition-colors ${
+                          i <= step ? "bg-[#FFB800]" : "bg-[#26262E]"
+                        }`}
+                      />
+                      <span
+                        className={`truncate text-[11px] sm:text-xs ${
+                          i === step ? "font-semibold text-[#FFB800]" : "text-zinc-500"
+                        }`}
+                      >
+                        {label}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
 
               <div className="animate-rise" key={step}>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#FFB800]">
                   {step === 0 ? "Welcome to tumeni." : `Step ${step + 1} of 4`}
                 </p>
-                <h2 className="text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                <h1 className="text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
                   {
                     [
                       needsVerification
@@ -967,18 +829,18 @@ export function Auth({
                       "Your circle is ready.",
                     ][step]
                   }
-                </h2>
+                </h1>
                 <p className="mb-6 mt-2 text-sm leading-relaxed text-zinc-400">
                   {
                     [
                       needsVerification
-                        ? "Verify your email address so your account and circle stay synced."
+                        ? "Verify your email address so your account stays synced."
                         : authTab === "signin"
-                          ? "Welcome back. Your circle, saved drops, and profile are ready."
-                          : "Join with Google or email & password — your profile syncs across sessions.",
+                          ? "Sign in to access your feed, drops, and circle."
+                          : "Create your account to join tumeni.",
                       "Add a photo, set your city for local discovery, and claim your @handle.",
                       "Pick the lanes you want first in your For You feed.",
-                      "Your reels, audio drops, and local circle are locked in.",
+                      "Your reels, audio drops, and local circle are ready.",
                     ][step]
                   }
                 </p>
@@ -1488,9 +1350,9 @@ export function Auth({
                       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-[#FFB800]/40 bg-[#141418] text-[#FFB800]">
                         <Check className="h-7 w-7" />
                       </div>
-                      <h3 className="mt-4 text-lg font-semibold text-white">
+                      <h2 className="mt-4 text-lg font-semibold text-white">
                         Your profile is synced
-                      </h3>
+                      </h2>
                       <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-zinc-400">
                         {profile.location
                           ? `Local radar tuned for ${profile.location}. Discover real drops, reels, and creators near you.`
@@ -1527,15 +1389,18 @@ export function Auth({
                     className="mt-4 min-h-[44px] px-0 text-zinc-400 hover:text-white"
                     onClick={() => {
                       setError("");
-                      if (step === 1 && auth.currentUser) {
-                        void signOut(auth).catch(() => {});
-                        setAccount("");
-                        setNeedsVerification(false);
-                      } else if (step === 1 && account.startsWith("srv_")) {
-                        void fetch("/api/auth/logout", {
-                          method: "POST",
-                          credentials: "same-origin",
-                        }).catch(() => {});
+                      if (step === 1) {
+                        if (hasSupabaseConfig) {
+                          void supabase.auth.signOut().catch(() => {});
+                        } else if (auth.currentUser) {
+                          void signOut(auth).catch(() => {});
+                          setNeedsVerification(false);
+                        } else if (account.startsWith("srv_")) {
+                          void fetch("/api/auth/logout", {
+                            method: "POST",
+                            credentials: "same-origin",
+                          }).catch(() => {});
+                        }
                         setAccount("");
                       }
                       setStep((s) => s - 1);

@@ -5,8 +5,13 @@ import { Auth } from "@/components/tumeni/Auth";
 import { TumeniApp } from "@/components/tumeni/App";
 import { readSetup, type SetupProfile } from "@/components/tumeni/onboarding";
 import { upsertAccountRecord } from "@/components/tumeni/storage";
+import { supabase } from "@/integrations/supabase/client";
 import { auth, testFirestoreConnection } from "@/lib/firebase";
 import { fetchCloudProfile, saveCloudProfile } from "@/lib/tumeni-db";
+
+const hasSupabaseConfig = Boolean(
+  import.meta.env["VITE_SUPABASE_URL"] && import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"],
+);
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -28,6 +33,22 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+function readProfileFromSupabaseUser(
+  uid: string,
+  metadata: Record<string, unknown> | undefined,
+): SetupProfile | null {
+  const metaProfile = metadata?.["tumeni_profile"];
+  if (metaProfile && typeof metaProfile === "object") {
+    const parsed = readSetup(JSON.stringify(metaProfile));
+    if (parsed) return parsed;
+  }
+  try {
+    return readSetup(localStorage.getItem(`tumeni-setup:${uid}`));
+  } catch {
+    return null;
+  }
+}
+
 function Index() {
   const [account, setAccount] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -35,9 +56,60 @@ function Index() {
   const [storageError, setStorageError] = useState(false);
 
   useEffect(() => {
-    void testFirestoreConnection();
-
     let cancelled = false;
+
+    if (hasSupabaseConfig) {
+      const applySessionUser = (
+        user: { id: string; user_metadata?: Record<string, unknown> } | null,
+      ) => {
+        if (cancelled) return;
+        if (!user) {
+          setAccount(null);
+          setSetup(null);
+          setReady(true);
+          return;
+        }
+        setAccount(user.id);
+        const profile = readProfileFromSupabaseUser(user.id, user.user_metadata);
+        if (profile) {
+          try {
+            localStorage.setItem(`tumeni-setup:${user.id}`, JSON.stringify(profile));
+            localStorage.setItem("tumeni-account", user.id);
+            upsertAccountRecord(user.id, profile);
+          } catch {
+            /* Browser storage optional when cloud metadata succeeds. */
+          }
+        }
+        setSetup(profile);
+        setReady(true);
+      };
+
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => {
+          applySessionUser(data.session?.user ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setAccount(null);
+            setSetup(null);
+            setReady(true);
+          }
+        });
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        applySessionUser(session?.user ?? null);
+      });
+
+      return () => {
+        cancelled = true;
+        subscription.unsubscribe();
+      };
+    }
+
+    void testFirestoreConnection();
 
     const hydrateServerSession = async (): Promise<boolean> => {
       try {
@@ -147,6 +219,11 @@ function Index() {
     setSetup(profile);
     setAccount(id);
 
+    if (hasSupabaseConfig) {
+      void supabase.auth.updateUser({ data: { tumeni_profile: profile } }).catch(() => {});
+      return;
+    }
+
     if (id.startsWith("srv_")) {
       void fetch("/api/auth/profile", {
         method: "PUT",
@@ -185,11 +262,15 @@ function Index() {
             } catch {
               /* Continue logout. */
             }
-            void fetch("/api/auth/logout", {
-              method: "POST",
-              credentials: "same-origin",
-            }).catch(() => {});
-            void signOut(auth).catch(() => {});
+            if (hasSupabaseConfig) {
+              void supabase.auth.signOut().catch(() => {});
+            } else {
+              void fetch("/api/auth/logout", {
+                method: "POST",
+                credentials: "same-origin",
+              }).catch(() => {});
+              void signOut(auth).catch(() => {});
+            }
             setAccount(null);
             setSetup(null);
           }}
